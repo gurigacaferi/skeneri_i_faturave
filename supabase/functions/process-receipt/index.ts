@@ -97,9 +97,39 @@ serve(async (req) => {
       });
     }
 
-    const chatGptPrompt = `Extract expense items from this receipt image as a JSON array. Each object in the array should have 'name' (string), 'category' (string, MUST be one of: ${validSubcategories.join(", ")}), 'amount' (number), 'date' (YYYY-MM-DD), 'merchant' (string or null), 'vat_code' (string, MUST be one of: ${validVatCodes.join(", ")}), and 'tvsh_percentage' (0, 8, or 18). If missing info, use null or defaults.`;
+    const systemPrompt = `You are an expert AI assistant specializing in accurately extracting structured data from receipt images. Your task is to return a clean, valid JSON object based on the user's request, without any additional commentary or explanations.`;
 
-    const promptHash = await sha256(user.id + chatGptPrompt + base64Image);
+    const chatGptPrompt = `
+Carefully analyze the following receipt image and extract all expense items into a JSON array named "expenses".
+
+Each object in the array must have the following fields:
+- "name": (string) The name of the item or service.
+- "category": (string) MUST be one of: ${validSubcategories.join(", ")}.
+- "amount": (number) The total price of the item.
+- "date": (string) The date of the purchase in YYYY-MM-DD format.
+- "merchant": (string or null) The name of the merchant.
+- "vat_code": (string) MUST be one of: ${validVatCodes.join(", ")}.
+- "tvsh_percentage": (number) Must be 0, 8, or 18 based on the VAT.
+
+If any information is missing from the receipt, use a reasonable default or null.
+
+Example of a valid response:
+{
+  "expenses": [
+    {
+      "name": "Kafe",
+      "category": "665-04 Ushqim dhe pije",
+      "amount": 1.50,
+      "date": "2024-07-15",
+      "merchant": "Kafe Bar",
+      "vat_code": "[45] Blerjet vendore 8%",
+      "tvsh_percentage": 8
+    }
+  ]
+}
+`;
+
+    const promptHash = await sha256(user.id + systemPrompt + chatGptPrompt + base64Image);
 
     const { data: cachedResponse } = await supabase
       .from("prompt_cache")
@@ -130,12 +160,13 @@ serve(async (req) => {
       ? base64Image
       : `data:image/png;base64,${base64Image}`;
 
-    console.log("Calling GPT-5 model...");
+    console.log("Calling GPT-4o model with enhanced prompt...");
     let chatCompletion;
     try {
       chatCompletion = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-4o",
         messages: [
+          { role: "system", content: systemPrompt },
           {
             role: "user",
             content: [
@@ -145,7 +176,7 @@ serve(async (req) => {
           },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 1000,
+        max_tokens: 2000, // Increased max_tokens for more complex receipts
       });
     } catch (openaiError: any) {
       const status = openaiError?.status || openaiError?.response?.status;
