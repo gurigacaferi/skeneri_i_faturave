@@ -130,11 +130,11 @@ serve(async (req) => {
       ? base64Image
       : `data:image/png;base64,${base64Image}`;
 
-    console.log("Calling GPT-4o model...");
+    console.log("Calling GPT-5 model...");
     let chatCompletion;
     try {
       chatCompletion = await openai.chat.completions.create({
-        model: "gpt-4o", // ← Reverted to gpt-4o
+        model: "gpt-5",
         messages: [
           {
             role: "user",
