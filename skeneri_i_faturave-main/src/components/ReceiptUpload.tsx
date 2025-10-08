@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -67,6 +69,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         // Use supabase.functions.invoke for calling the Edge Function
         const { data, error } = await supabase.functions.invoke('process-receipt', {
           body: { base64Image, filename: file.name, batchId: selectedBatchId },
+          headers: { Authorization: `Bearer ${session.access_token}` }, // Added Authorization header
         });
 
         if (error) {
