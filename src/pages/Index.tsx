@@ -6,19 +6,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReceiptUpload from "@/components/ReceiptUpload";
 import ExpensesList from "@/components/ExpensesList";
 import MonthlyReport from "@/components/MonthlyReport";
-import BatchManager from "@/components/BatchManager";
+import { useDefaultBatch } from "@/hooks/useDefaultBatch";
 
 const Index = () => {
   const { session, loading, supabase } = useSession();
   const navigate = useNavigate();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const { selectedBatchId, loadingBatches, refreshBatches } = useDefaultBatch();
 
   useEffect(() => {
     if (!loading && !session) {
       navigate('/login');
     }
   }, [session, loading, navigate]);
+
+  useEffect(() => {
+    if (session) {
+      refreshBatches();
+    }
+  }, [session, refreshBatches]);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -29,17 +35,13 @@ const Index = () => {
 
   const handleReceiptProcessed = () => {
     setRefreshKey(prevKey => prevKey + 1);
+    refreshBatches(); // Refresh batches to update total_amount
   };
 
-  const handleBatchSelected = (batchId: string | null) => {
-    setSelectedBatchId(batchId);
-    setRefreshKey(prevKey => prevKey + 1);
-  };
-
-  if (loading) {
+  if (loading || loadingBatches) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <p className="text-lg text-gray-700 dark:text-gray-300">Loading authentication...</p>
+        <p className="text-lg text-gray-700 dark:text-gray-300">Loading authentication and batches...</p>
       </div>
     );
   }
@@ -57,16 +59,12 @@ const Index = () => {
         </Button>
       </div>
 
-      <Tabs defaultValue="batches" className="w-full max-w-5xl">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="batches">Manage Batches</TabsTrigger>
+      <Tabs defaultValue="upload" className="w-full max-w-5xl">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="upload">Upload Receipt</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
           <TabsTrigger value="report">Monthly Report</TabsTrigger>
         </TabsList>
-        <TabsContent value="batches" className="mt-6">
-          <BatchManager onBatchSelected={handleBatchSelected} selectedBatchId={selectedBatchId} />
-        </TabsContent>
         <TabsContent value="upload" className="mt-6">
           <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} selectedBatchId={selectedBatchId} />
         </TabsContent>
