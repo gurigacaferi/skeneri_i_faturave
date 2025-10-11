@@ -34,13 +34,13 @@ const Index = () => {
 
   const handleReceiptProcessed = () => {
     setRefreshKey(prevKey => prevKey + 1);
-    refreshBatches(); // Refresh batches to update total_amount
+    refreshBatches();
   };
 
   if (loading || loadingBatches) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <p className="text-lg text-gray-700 dark:text-gray-300">Loading authentication and batches...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-lg text-foreground/70">Loading...</p>
       </div>
     );
   }
@@ -50,26 +50,32 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-100 dark:bg-gray-900 p-4">
-      <div className="w-full max-w-5xl flex justify-between items-center mb-8 mt-4">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Expense Tracker</h1>
-        <Button onClick={handleLogout} variant="destructive">
-          Logout
-        </Button>
-      </div>
+    <div className="min-h-screen w-full">
+      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 h-16 flex justify-between items-center">
+          <h1 className="text-xl font-bold text-foreground">
+            Expense Tracker
+          </h1>
+          <Button onClick={handleLogout} variant="outline">
+            Logout
+          </Button>
+        </div>
+      </header>
 
-      <Tabs defaultValue="upload" className="w-full max-w-5xl">
-        <TabsList className="grid w-full grid-cols-2"> {/* Changed from grid-cols-3 to grid-cols-2 */}
-          <TabsTrigger value="upload">Upload Receipt</TabsTrigger>
-          <TabsTrigger value="expenses">Expenses</TabsTrigger>
-        </TabsList>
-        <TabsContent value="upload" className="mt-6">
-          <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} selectedBatchId={selectedBatchId} />
-        </TabsContent>
-        <TabsContent value="expenses" className="mt-6">
-          <ExpensesList key={`expenses-${refreshKey}`} />
-        </TabsContent>
-      </Tabs>
+      <main className="container mx-auto px-4 py-8">
+        <Tabs defaultValue="upload" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-secondary p-1 h-11 rounded-lg">
+            <TabsTrigger value="upload" className="text-md data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md">Upload Receipt</TabsTrigger>
+            <TabsTrigger value="expenses" className="text-md data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm rounded-md">Expenses</TabsTrigger>
+          </TabsList>
+          <TabsContent value="upload" className="mt-6">
+            <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} selectedBatchId={selectedBatchId} />
+          </TabsContent>
+          <TabsContent value="expenses" className="mt-6">
+            <ExpensesList key={`expenses-${refreshKey}`} />
+          </TabsContent>
+        </Tabs>
+      </main>
     </div>
   );
 };

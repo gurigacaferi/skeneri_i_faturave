@@ -17,31 +17,52 @@ const Login = () => {
 
   if (loading || session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-        <p className="text-lg text-gray-700 dark:text-gray-300">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-lg text-foreground/70">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold text-center mb-6 text-gray-900 dark:text-white">Welcome Back!</h2>
+    <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
+      <div className="w-full max-w-md bg-card p-8 rounded-xl shadow-lg shadow-black/5">
+        <h2 className="text-2xl font-bold text-center mb-6 text-foreground">Welcome Back!</h2>
         <Auth
           supabaseClient={supabase}
-          providers={[]} // You can add 'google', 'github', etc. here if needed
+          providers={[]}
           appearance={{
             theme: ThemeSupa,
             variables: {
               default: {
                 colors: {
                   brand: 'hsl(var(--primary))',
-                  brandAccent: 'hsl(var(--primary-foreground))',
+                  brandAccent: 'hsl(var(--primary) / 0.8)',
+                  brandButtonText: 'hsl(var(--primary-foreground))',
+                  defaultButtonBackground: 'hsl(var(--card))',
+                  defaultButtonBackgroundHover: 'hsl(var(--secondary))',
+                  defaultButtonBorder: 'hsl(var(--border))',
+                  defaultButtonText: 'hsl(var(--foreground))',
+                  inputBackground: 'hsl(var(--background))',
+                  inputBorder: 'hsl(var(--border))',
+                  inputBorderHover: 'hsl(var(--ring))',
+                  inputBorderFocus: 'hsl(var(--ring))',
+                  inputText: 'hsl(var(--foreground))',
+                  inputLabelText: 'hsl(var(--muted-foreground))',
+                  inputPlaceholder: 'hsl(var(--muted-foreground))',
+                  messageText: 'hsl(var(--foreground))',
+                  messageTextDanger: 'hsl(var(--destructive))',
+                  anchorTextColor: 'hsl(var(--primary))',
+                  anchorTextColorHover: 'hsl(var(--primary) / 0.8)',
+                },
+                radii: {
+                  borderRadiusButton: 'var(--radius)',
+                  buttonBorderRadius: 'var(--radius)',
+                  inputBorderRadius: 'var(--radius)',
                 },
               },
             },
           }}
-          theme="light" // Use 'dark' if your app primarily uses dark mode
+          theme="light"
           redirectTo={window.location.origin + '/'}
         />
       </div>
