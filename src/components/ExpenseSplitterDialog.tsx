@@ -20,10 +20,12 @@ import { format, parseISO } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid'; // For generating temporary IDs
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 interface ExpenseItem {
   tempId: string; // Temporary ID for UI management
   receiptId: string; // Link to the original receipt
+  base64Image: string; // Base64 image for display during review
   name: string;
   category: string;
   amount: number;
@@ -36,6 +38,7 @@ interface ExpenseItem {
 // Define the structure for initial expenses coming into the dialog
 interface InitialExpenseData {
   receiptId: string;
+  base64Image: string; // Added base64Image for immediate display
   expense: {
     name: string;
     category: string;
@@ -50,7 +53,7 @@ interface InitialExpenseData {
 interface ExpenseSplitterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialExpenses: InitialExpenseData[] | null; // Now an array of objects with receiptId
+  initialExpenses: InitialExpenseData[] | null; // Now an array of objects with receiptId and base64Image
   batchId: string | null;
   onExpensesSaved: () => void;
 }
@@ -158,6 +161,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
       const parsedExpenses: ExpenseItem[] = initialExpenses.map((data) => ({
         tempId: uuidv4(),
         receiptId: data.receiptId, // Assign the receiptId
+        base64Image: data.base64Image, // Assign the base64Image
         name: data.expense.name,
         category: data.expense.category,
         amount: parseFloat(data.expense.amount.toFixed(2)),
@@ -175,6 +179,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   const createNewEmptyExpense = (baseExpense?: Partial<ExpenseItem>): ExpenseItem => ({
     tempId: uuidv4(),
     receiptId: baseExpense?.receiptId || 'unknown', // Default to 'unknown' or handle as needed
+    base64Image: baseExpense?.base64Image || '', // Default to empty string
     name: baseExpense?.name || '',
     category: baseExpense?.category || allSubcategories[0] || '',
     amount: baseExpense?.amount || 0,
@@ -185,7 +190,9 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   });
 
   const handleAddExpense = () => {
-    setExpenses((prev) => [...prev, createNewEmptyExpense()]);
+    // When adding a new expense, try to inherit receiptId and base64Image from the first existing expense
+    const baseExpense = expenses.length > 0 ? { receiptId: expenses[0].receiptId, base64Image: expenses[0].base64Image } : {};
+    setExpenses((prev) => [...prev, createNewEmptyExpense(baseExpense)]);
   };
 
   const handleUpdateExpense = (tempId: string, field: keyof ExpenseItem, value: any) => {
@@ -299,7 +306,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         .eq('id', batchId)
         .single();
 
-      if (fetchBatchError) {
+      if (fetchBatchError && fetchBatchError.code !== 'PGRST116') { // PGRST116 means no rows found
         console.error('Error fetching current batch amount:', fetchBatchError.message);
         // Proceed without updating total if fetch fails, but log it
       } else {
@@ -326,163 +333,179 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
     }
   };
 
+  const firstReceiptImage = expenses.length > 0 ? expenses[0].base64Image : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 flex flex-col">
+        <DialogHeader className="p-6 pb-0">
           <DialogTitle>Review and Split Expenses</DialogTitle>
           <DialogDescription>
             Review the extracted expenses. You can edit, add, delete, or split items before saving.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          {expenses.length === 0 && (
-            <p className="text-center text-gray-500 dark:text-gray-400">No expenses to display. Click "Add Expense" to start.</p>
-          )}
-          {expenses.map((exp, index) => (
-            <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
-              <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Expense #{index + 1} (Receipt ID: {exp.receiptId.substring(0, 8)}...)
-              </div>
-              <div className="col-span-6 md:col-span-3">
-                <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
-                <Input
-                  id={`name-${exp.tempId}`}
-                  value={exp.name}
-                  onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              <div className="col-span-6 md:col-span-3">
-                <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
-                <Select
-                  onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)}
-                  value={exp.category}
-                  disabled={loading}
-                >
-                  <SelectTrigger id={`category-${exp.tempId}`}>
-                    <SelectValue placeholder="Select a category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                      <SelectGroup key={mainCategory}>
-                        <SelectLabel>{mainCategory}</SelectLabel>
-                        {subcategories.map((subCategory) => (
-                          <SelectItem key={subCategory} value={subCategory}>
-                            {subCategory}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`amount-${exp.tempId}`}>Amount</Label>
-                <Input
-                  id={`amount-${exp.tempId}`}
-                  type="number"
-                  step="0.01"
-                  value={exp.amount}
-                  onChange={(e) => handleUpdateExpense(exp.tempId, 'amount', parseFloat(e.target.value) || 0)}
-                  disabled={loading}
-                />
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
-                <Select
-                  onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)}
-                  value={exp.vat_code}
-                  disabled={loading}
-                >
-                  <SelectTrigger id={`vat_code-${exp.tempId}`}>
-                    <SelectValue placeholder="Select VAT code" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vatCodes.map((code) => (
-                      <SelectItem key={code} value={code}>
-                        {code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`date-${exp.tempId}`}>Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={'outline'}
-                      className={cn(
-                        'w-full justify-start text-left font-normal',
-                        !exp.date && 'text-muted-foreground'
-                      )}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
+            <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
+              {firstReceiptImage ? (
+                <img src={firstReceiptImage} alt="Receipt" className="max-w-full max-h-full object-contain rounded-md shadow-md" />
+              ) : (
+                <p className="text-muted-foreground">No receipt image available.</p>
+              )}
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
+            <div className="grid gap-4">
+              {expenses.length === 0 && (
+                <p className="text-center text-gray-500 dark:text-gray-400">No expenses to display. Click "Add Expense" to start.</p>
+              )}
+              {expenses.map((exp, index) => (
+                <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
+                  <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Expense #{index + 1} (Receipt ID: {exp.receiptId.substring(0, 8)}...)
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
+                    <Input
+                      id={`name-${exp.tempId}`}
+                      value={exp.name}
+                      onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
+                    <Select
+                      onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)}
+                      value={exp.category}
                       disabled={loading}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {exp.date ? format(exp.date, 'PPP') : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={exp.date}
-                      onSelect={(date) => handleUpdateExpense(exp.tempId, 'date', date!)}
-                      initialFocus
+                      <SelectTrigger id={`category-${exp.tempId}`}>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                          <SelectGroup key={mainCategory}>
+                            <SelectLabel>{mainCategory}</SelectLabel>
+                            {subcategories.map((subCategory) => (
+                              <SelectItem key={subCategory} value={subCategory}>
+                                {subCategory}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`amount-${exp.tempId}`}>Amount</Label>
+                    <Input
+                      id={`amount-${exp.tempId}`}
+                      type="number"
+                      step="0.01"
+                      value={exp.amount}
+                      onChange={(e) => handleUpdateExpense(exp.tempId, 'amount', parseFloat(e.target.value) || 0)}
+                      disabled={loading}
                     />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="col-span-6 md:col-span-3">
-                <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
-                <Input
-                  id={`merchant-${exp.tempId}`}
-                  value={exp.merchant || ''}
-                  onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)}
-                  disabled={loading}
-                />
-              </div>
-              <div className="col-span-12 md:col-span-3 flex items-end justify-end space-x-2 mt-4 md:mt-0">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleSplitExpense(exp.tempId)}
-                  disabled={loading}
-                  title="Split Expense"
-                >
-                  <Split className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  onClick={() => handleDeleteExpense(exp.tempId)}
-                  disabled={loading}
-                  title="Delete Expense"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
+                    <Select
+                      onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)}
+                      value={exp.vat_code}
+                      disabled={loading}
+                    >
+                      <SelectTrigger id={`vat_code-${exp.tempId}`}>
+                        <SelectValue placeholder="Select VAT code" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vatCodes.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`date-${exp.tempId}`}>Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={'outline'}
+                          className={cn(
+                            'w-full justify-start text-left font-normal',
+                            !exp.date && 'text-muted-foreground'
+                          )}
+                          disabled={loading}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {exp.date ? format(exp.date, 'PPP') : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={exp.date}
+                          onSelect={(date) => handleUpdateExpense(exp.tempId, 'date', date!)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
+                    <Input
+                      id={`merchant-${exp.tempId}`}
+                      value={exp.merchant || ''}
+                      onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="col-span-12 md:col-span-3 flex items-end justify-end space-x-2 mt-4 md:mt-0">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleSplitExpense(exp.tempId)}
+                      disabled={loading}
+                      title="Split Expense"
+                    >
+                      <Split className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => handleDeleteExpense(exp.tempId)}
+                      disabled={loading}
+                      title="Delete Expense"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <Button onClick={handleAddExpense} variant="secondary" className="mt-4" disabled={loading}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
+              </Button>
             </div>
-          ))}
-          <Button onClick={handleAddExpense} variant="secondary" className="mt-4" disabled={loading}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
-          </Button>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSaveAllExpenses} disabled={loading}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              'Save All Expenses'
-            )}
-          </Button>
-        </DialogFooter>
+            <DialogFooter className="mt-6">
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveAllExpenses} disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save All Expenses'
+                )}
+              </Button>
+            </DialogFooter>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </DialogContent>
     </Dialog>
   );
