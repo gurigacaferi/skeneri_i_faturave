@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subWeeks, subMonths, subYears, parse } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subWeeks, subMonths, subYears, parse } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { DateRange } from "react-day-picker";
 
@@ -49,7 +49,7 @@ export function DateRangePickerForExport({
   const [fromText, setFromText] = React.useState<string>('');
   const [toText, setToText] = React.useState<string>('');
 
-  // Effect to synchronize internal date state with text inputs
+  // Effect to synchronize text inputs when 'date' state changes (e.g., from interval selection or calendar)
   React.useEffect(() => {
     if (date?.from) {
       setFromText(format(date.from, 'MMddyy'));
@@ -61,12 +61,13 @@ export function DateRangePickerForExport({
     } else {
       setToText('');
     }
-    if (date?.from && date?.to) {
-      onDateRangeChange({ from: date.from, to: date.to, label: selectedInterval });
-    } else {
-      onDateRangeChange({ from: undefined, to: undefined, label: selectedInterval });
-    }
+  }, [date]);
+
+  // Effect to call onDateRangeChange when 'date' or 'selectedInterval' changes
+  React.useEffect(() => {
+    onDateRangeChange({ from: date?.from, to: date?.to, label: selectedInterval });
   }, [date, selectedInterval, onDateRangeChange]);
+
 
   const handleSelectInterval = (value: string) => {
     setSelectedInterval(value);
@@ -210,13 +211,9 @@ export function DateRangePickerForExport({
                 selected={date}
                 onSelect={(newDateRange) => {
                   setDate(newDateRange);
-                  onDateRangeChange({
-                    from: newDateRange?.from,
-                    to: newDateRange?.to,
-                    label: "Custom Range",
-                  });
                 }}
                 numberOfMonths={2}
+                fixedWeeks={true} {/* Added fixedWeeks prop here */}
               />
             </PopoverContent>
           </Popover>
