@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReceiptUpload from "@/components/ReceiptUpload";
 import ExpensesList from "@/components/ExpensesList";
-import MonthlyReport from "@/components/MonthlyReport";
 import { useDefaultBatch } from "@/hooks/useDefaultBatch";
 
 const Index = () => {
@@ -60,19 +59,15 @@ const Index = () => {
       </div>
 
       <Tabs defaultValue="upload" className="w-full max-w-5xl">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2"> {/* Changed from grid-cols-3 to grid-cols-2 */}
           <TabsTrigger value="upload">Upload Receipt</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
-          <TabsTrigger value="report">Monthly Report</TabsTrigger>
         </TabsList>
         <TabsContent value="upload" className="mt-6">
           <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} selectedBatchId={selectedBatchId} />
         </TabsContent>
         <TabsContent value="expenses" className="mt-6">
           <ExpensesList key={`expenses-${refreshKey}`} />
-        </TabsContent>
-        <TabsContent value="report" className="mt-6">
-          <MonthlyReport key={`report-${refreshKey}`} />
         </TabsContent>
       </Tabs>
     </div>
