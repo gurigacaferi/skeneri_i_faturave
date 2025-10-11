@@ -95,8 +95,8 @@ const ExpenseViewDialog: React.FC<ExpenseViewDialogProps> = ({
             View the details of your expense and the associated receipt.
           </DialogDescription>
         </DialogHeader>
-        <ResizablePanelGroup direction="horizontal" className="flex-1 h-full"> {/* Added h-full */}
-          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto"> {/* p-6 and overflow-y-auto here */}
+        <ResizablePanelGroup direction="horizontal" className="flex-1 min-h-0">
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
             <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
               {loadingImage ? (
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -108,7 +108,7 @@ const ExpenseViewDialog: React.FC<ExpenseViewDialogProps> = ({
             </div>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto"> {/* p-6 and overflow-y-auto here */}
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label className="text-right font-medium">Name:</Label>
