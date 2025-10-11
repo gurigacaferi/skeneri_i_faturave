@@ -18,23 +18,6 @@ interface DateRangePickerForExportProps extends React.HTMLAttributes<HTMLDivElem
   initialRange?: { from: Date | undefined; to: Date | undefined; label: string };
 }
 
-// Helper to parse MMDDYY string to Date
-const parseMMDDYY = (dateString: string): Date | undefined => {
-  if (!dateString || dateString.length !== 6) return undefined;
-  try {
-    // Use parse from date-fns with a specific format string
-    const parsedDate = parse(dateString, 'MMddyy', new Date());
-    // Validate if the parsed date is actually valid and not just a default date
-    if (isNaN(parsedDate.getTime())) {
-      return undefined;
-    }
-    return parsedDate;
-  } catch (e) {
-    console.error("Error parsing date string:", dateString, e);
-    return undefined;
-  }
-};
-
 export function DateRangePickerForExport({
   className,
   onDateRangeChange,
@@ -46,22 +29,6 @@ export function DateRangePickerForExport({
     to: endOfMonth(today),
   });
   const [selectedInterval, setSelectedInterval] = React.useState<string>(initialRange?.label || "this_month");
-  const [fromText, setFromText] = React.useState<string>('');
-  const [toText, setToText] = React.useState<string>('');
-
-  // Effect to synchronize text inputs when 'date' state changes (e.g., from interval selection or calendar)
-  React.useEffect(() => {
-    if (date?.from) {
-      setFromText(format(date.from, 'MMddyy'));
-    } else {
-      setFromText('');
-    }
-    if (date?.to) {
-      setToText(format(date.to, 'MMddyy'));
-    } else {
-      setToText('');
-    }
-  }, [date]);
 
   // Effect to call onDateRangeChange when 'date' or 'selectedInterval' changes
   React.useEffect(() => {
@@ -124,20 +91,6 @@ export function DateRangePickerForExport({
     setDate({ from: newFrom, to: newTo });
   };
 
-  const handleFromTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setFromText(value);
-    const parsed = parseMMDDYY(value);
-    setDate((prev) => ({ ...prev, from: parsed }));
-  };
-
-  const handleToTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setToText(value);
-    const parsed = parseMMDDYY(value);
-    setDate((prev) => ({ ...prev, to: parsed }));
-  };
-
   return (
     <div className={cn("grid gap-2", className)}>
       <Select onValueChange={handleSelectInterval} value={selectedInterval}>
@@ -158,26 +111,6 @@ export function DateRangePickerForExport({
 
       {selectedInterval === "custom" && (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <Label htmlFor="from-date" className="sr-only">From</Label>
-            <Input
-              id="from-date"
-              placeholder="MMDDYY (From)"
-              value={fromText}
-              onChange={handleFromTextChange}
-              className="w-full"
-              maxLength={6}
-            />
-            <Label htmlFor="to-date" className="sr-only">To</Label>
-            <Input
-              id="to-date"
-              placeholder="MMDDYY (To)"
-              value={toText}
-              onChange={handleToTextChange}
-              className="w-full"
-              maxLength={6}
-            />
-          </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button
