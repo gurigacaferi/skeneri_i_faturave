@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useSession } from '@/components/SessionContextProvider';
-import { Loader2, UploadCloud, CheckCircle2, Link, Download } from 'lucide-react';
+import { Loader2, UploadCloud, CheckCircle2, Link, Download, FileText, X, Image, File as FileIcon } from 'lucide-react';
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { exportExpensesToCsv } from '@/utils/exportToCsv';
 import { DateRangePickerForExport } from './DateRangePickerForExport';
 import { format } from 'date-fns';
+import { v4 as uuidv4 } from 'uuid'; // Import uuid for unique file IDs
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -30,8 +31,12 @@ interface ExtractedExpenseWithReceiptId {
   };
 }
 
+interface UploadedFile extends File {
+  id: string; // Add a unique ID for each file
+}
+
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(false);
   const { session, supabase } = useSession();
 
@@ -48,7 +53,12 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    setFiles(acceptedFiles);
+    const newFiles: UploadedFile[] = acceptedFiles.map(file =>
+      Object.assign(file, {
+        id: uuidv4(), // Assign a unique ID
+      })
+    );
+    setFiles(prevFiles => [...prevFiles, ...newFiles]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -60,6 +70,20 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     },
     multiple: true,
   });
+
+  const handleRemoveFile = (fileId: string) => {
+    setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
+  };
+
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) {
+      return <Image className="h-5 w-5 text-primary" />;
+    }
+    if (fileType === 'application/pdf') {
+      return <FileIcon className="h-5 w-5 text-red-500" />;
+    }
+    return <FileText className="h-5 w-5 text-gray-500" />;
+  };
 
   const checkQuickBooksConnection = useCallback(async () => {
     if (!session) return;
@@ -123,7 +147,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
     dismissToast(toastId);
     setLoading(false);
-    setFiles([]);
+    setFiles([]); // Clear files after processing
 
     if (processedExpenses.length > 0) {
       showSuccess(hasError ? 'Some receipts were processed.' : 'All receipts processed!');
@@ -212,13 +236,32 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                   Drag 'n' drop files here, or click to select
                 </p>
               )}
-              {files.length > 0 && (
-                <div className="mt-2 text-sm">
-                  Selected: {files.map(f => f.name).join(', ')}
-                </div>
-              )}
             </div>
           </div>
+          {files.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-medium text-foreground/80">Selected Files:</p>
+              {files.map(file => (
+                <div key={file.id} className="flex items-center justify-between p-2 border rounded-md bg-secondary/30">
+                  <div className="flex items-center space-x-2">
+                    {getFileIcon(file.type)}
+                    <span className="text-sm text-foreground/90">{file.name}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering dropzone
+                      handleRemoveFile(file.id);
+                    }}
+                    className="h-6 w-6 text-foreground/60 hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
           <Button
             onClick={handleFileUpload}
             className="w-full mt-6 h-12 text-lg font-semibold"
