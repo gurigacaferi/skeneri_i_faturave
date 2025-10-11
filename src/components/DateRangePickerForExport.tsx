@@ -213,7 +213,7 @@ export function DateRangePickerForExport({
                   setDate(newDateRange);
                 }}
                 numberOfMonths={2}
-                fixedWeeks={true} {/* Added fixedWeeks prop here */}
+                fixedWeeks={true}
               />
             </PopoverContent>
           </Popover>
