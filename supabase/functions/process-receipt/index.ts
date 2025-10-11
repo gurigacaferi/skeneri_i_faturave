@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.200.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import OpenAI from "npm:openai";
 import { corsHeaders } from "../_shared/cors.ts";
-import { v4 as uuidv4 } from "https://jspm.dev/uuid"; // Import uuid for unique filenames
 
 // Define the valid subcategories for validation
 const validSubcategories = [
@@ -86,35 +85,9 @@ serve(async (req) => {
       });
     }
 
-    // Decode base64 image and upload to Supabase Storage
-    const base64Data = base64Image.split(',')[1]; // Remove data:image/png;base64, prefix
-    const imageBuffer = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-    const fileExtension = filename.split('.').pop();
-    const storagePath = `${user.id}/receipts/${uuidv4()}.${fileExtension}`;
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('receipt-images')
-      .upload(storagePath, imageBuffer, {
-        contentType: `image/${fileExtension}`,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      console.error("Supabase Storage upload error:", uploadError.message);
-      return new Response(JSON.stringify({ error: "Failed to upload image to storage", details: uploadError.message }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: publicUrlData } = supabase.storage
-      .from('receipt-images')
-      .getPublicUrl(storagePath);
-
-    const imageUrl = publicUrlData.publicUrl;
-
     const { data: receiptData, error: receiptError } = await supabase
       .from("receipts")
-      .insert({ user_id: user.id, filename, batch_id: batchId, image_url: imageUrl })
+      .insert({ user_id: user.id, filename, batch_id: batchId })
       .select()
       .single();
 
@@ -169,7 +142,6 @@ Example of a valid response:
       return new Response(JSON.stringify({
         message: "Receipt processed successfully (cached)",
         receiptId: receiptData.id,
-        imageUrl: imageUrl, // Return the image URL
         expenses: cachedResponse.ai_response,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -184,7 +156,7 @@ Example of a valid response:
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
     // Make sure the image is a valid data URL
-    const imageUrlForGPT = base64Image.startsWith("data:")
+    const imageUrl = base64Image.startsWith("data:")
       ? base64Image
       : `data:image/png;base64,${base64Image}`;
 
@@ -199,7 +171,7 @@ Example of a valid response:
             role: "user",
             content: [
               { type: "text", text: chatGptPrompt },
-              { type: "image_url", image_url: { url: imageUrlForGPT, detail: "high" } },
+              { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
             ],
           },
         ],
@@ -273,7 +245,6 @@ Example of a valid response:
     return new Response(JSON.stringify({
       message: "Receipt processed successfully",
       receiptId: receiptData.id,
-      imageUrl: imageUrl, // Return the image URL
       expenses: validatedExpenses,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 

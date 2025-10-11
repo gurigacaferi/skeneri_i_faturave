@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Eye } from 'lucide-react';
+import { Loader2, Trash2, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import EditExpenseDialog from './EditExpenseDialog';
-import ExpenseViewDialog from './ExpenseViewDialog'; // Import the new dialog
 
 interface Expense {
   id: string;
@@ -37,7 +36,6 @@ interface Expense {
   tvsh_percentage: number;
   vat_code: string | null;
   created_at: string;
-  receipt_id: string; // Added receipt_id
 }
 
 const ExpensesList: React.FC = () => {
@@ -47,8 +45,6 @@ const ExpensesList: React.FC = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false); // State for view dialog
-  const [currentExpenseToView, setCurrentExpenseToView] = useState<Expense | null>(null); // State for expense to view
 
   const fetchExpenses = async () => {
     if (!session) return;
@@ -56,7 +52,7 @@ const ExpensesList: React.FC = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('expenses')
-      .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, receipt_id') // Select receipt_id
+      .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
       .eq('user_id', session.user.id)
       .order('date', { ascending: false });
 
@@ -99,11 +95,6 @@ const ExpensesList: React.FC = () => {
   const handleEditClick = (expense: Expense) => {
     setCurrentExpenseToEdit(expense);
     setIsEditDialogOpen(true);
-  };
-
-  const handleViewClick = (expense: Expense) => {
-    setCurrentExpenseToView(expense);
-    setIsViewDialogOpen(true);
   };
 
   const handleExpenseUpdated = () => {
@@ -159,23 +150,13 @@ const ExpensesList: React.FC = () => {
                           variant="ghost"
                           size="icon"
                           className="text-foreground/60 hover:text-primary hover:bg-accent"
-                          onClick={() => handleViewClick(expense)}
-                          title="View Expense"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-foreground/60 hover:text-primary hover:bg-accent"
                           onClick={() => handleEditClick(expense)}
-                          title="Edit Expense"
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent" title="Delete Expense">
+                            <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </AlertDialogTrigger>
@@ -217,13 +198,6 @@ const ExpensesList: React.FC = () => {
           onOpenChange={setIsEditDialogOpen}
           expense={currentExpenseToEdit}
           onExpenseUpdated={handleExpenseUpdated}
-        />
-      )}
-      {currentExpenseToView && (
-        <ExpenseViewDialog
-          open={isViewDialogOpen}
-          onOpenChange={setIsViewDialogOpen}
-          expense={currentExpenseToView}
         />
       )}
     </Card>

@@ -20,7 +20,6 @@ interface ReceiptUploadProps {
 
 interface ExtractedExpenseWithReceiptId {
   receiptId: string;
-  base64Image: string; // Added base64Image for immediate display
   expense: {
     name: string;
     category: string;
@@ -34,7 +33,6 @@ interface ExtractedExpenseWithReceiptId {
 
 interface UploadedFile extends File {
   id: string; // Add a unique ID for each file
-  base64?: string; // Store base64 string for immediate use
 }
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
@@ -55,22 +53,12 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    acceptedFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setFiles(prevFiles => [
-          ...prevFiles,
-          Object.assign(file, {
-            id: uuidv4(),
-            base64: reader.result as string, // Store base64 string
-          }),
-        ]);
-      };
-      reader.onerror = () => {
-        showError(`Failed to read file: ${file.name}`);
-      };
-      reader.readAsDataURL(file);
-    });
+    const newFiles: UploadedFile[] = acceptedFiles.map(file =>
+      Object.assign(file, {
+        id: uuidv4(), // Assign a unique ID
+      })
+    );
+    setFiles(prevFiles => [...prevFiles, ...newFiles]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -135,20 +123,21 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     let hasError = false;
 
     for (const file of files) {
-      if (!file.base64) {
-        showError(`File ${file.name} could not be read.`);
-        hasError = true;
-        continue;
-      }
-
       try {
+        const base64Image = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = (error) => reject(new Error('Failed to read file: ' + error));
+        });
+
         const { data, error } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Image: file.base64, filename: file.name, batchId: selectedBatchId },
+          body: { base64Image, filename: file.name, batchId: selectedBatchId },
         });
 
         if (error) throw new Error(error.message || `Failed to process receipt ${file.name}.`);
         if (data.expenses) {
-          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: data.receiptId, base64Image: file.base64!, expense: exp }));
+          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: data.receiptId, expense: exp }));
         }
       } catch (error: any) {
         hasError = true;
