@@ -202,7 +202,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           const updatedExp = { ...exp, [field]: value };
           // If vat_code changes, update tvsh_percentage
           if (field === 'vat_code') {
-            updatedExp.tvsh_percentage = getPercentageFromVatsCode(value);
+            updatedExp.tvsh_percentage = getPercentageFromVatCode(value);
           }
           return updatedExp;
         }
@@ -344,8 +344,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
             Review the extracted expenses. You can edit, add, delete, or split items before saving.
           </DialogDescription>
         </DialogHeader>
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
-          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
+        <ResizablePanelGroup direction="horizontal" className="flex-1 h-full"> {/* Added h-full */}
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto"> {/* p-6 and overflow-y-auto here */}
             <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
               {firstReceiptImage ? (
                 <img src={firstReceiptImage} alt="Receipt" className="max-w-full max-h-full object-contain rounded-md shadow-md" />
@@ -355,7 +355,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
             </div>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto"> {/* p-6 and overflow-y-auto here */}
             <div className="grid gap-4">
               {expenses.length === 0 && (
                 <p className="text-center text-gray-500 dark:text-gray-400">No expenses to display. Click "Add Expense" to start.</p>
