@@ -26,7 +26,10 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
       <div className="w-full max-w-md bg-card p-8 rounded-xl shadow-lg shadow-black/5">
-        <h2 className="text-2xl font-bold text-center mb-6 text-foreground">Welcome Back!</h2>
+        <div className="flex flex-col items-center mb-6">
+          <img src="/logo.png" alt="Fatural Logo" className="h-12 w-12 mb-2" />
+          <h2 className="text-2xl font-bold text-center text-foreground">Welcome to Fatural!</h2>
+        </div>
         <Auth
           supabaseClient={supabase}
           providers={[]}

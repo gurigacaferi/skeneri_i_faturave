@@ -53,9 +53,12 @@ const Index = () => {
     <div className="min-h-screen w-full">
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-foreground">
-            Expense Tracker
-          </h1>
+          <div className="flex items-center space-x-2">
+            <img src="/logo.png" alt="Fatural Logo" className="h-8 w-8" />
+            <h1 className="text-xl font-bold text-foreground">
+              Fatural
+            </h1>
+          </div>
           <Button onClick={handleLogout} variant="outline">
             Logout
           </Button>
