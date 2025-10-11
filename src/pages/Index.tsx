@@ -54,7 +54,7 @@ const Index = () => {
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
           <div className="flex items-center space-x-2">
-            <img src="/logo.png" alt="Fatural Logo" className="h-8 w-8" />
+            <img src="/ChatGPT Image Oct 11, 2025, 03_50_14 PM.png" alt="Fatural Logo" className="h-8 w-8" />
             <h1 className="text-xl font-bold text-foreground">
               Fatural
             </h1>
