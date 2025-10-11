@@ -88,7 +88,7 @@ const ExpenseViewDialog: React.FC<ExpenseViewDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 flex flex-col">
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col"> {/* Removed p-0 */}
         <DialogHeader className="p-6 pb-0">
           <DialogTitle>Expense Details</DialogTitle>
           <DialogDescription>
@@ -96,47 +96,51 @@ const ExpenseViewDialog: React.FC<ExpenseViewDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
         <ResizablePanelGroup direction="horizontal" className="flex-1">
-          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
-            <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
-              {loadingImage ? (
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              ) : receiptImageUrl ? (
-                <img src={receiptImageUrl} alt="Receipt" className="max-w-full max-h-full object-contain rounded-md shadow-md" />
-              ) : (
-                <p className="text-muted-foreground">No receipt image available.</p>
-              )}
+          <ResizablePanel defaultSize={50} minSize={30} className="overflow-y-auto"> {/* Removed p-6 */}
+            <div className="p-6"> {/* Added div for padding */}
+              <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
+                {loadingImage ? (
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                ) : receiptImageUrl ? (
+                  <img src={receiptImageUrl} alt="Receipt" className="max-w-full max-h-full object-contain rounded-md shadow-md" />
+                ) : (
+                  <p className="text-muted-foreground">No receipt image available.</p>
+                )}
+              </div>
             </div>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">Name:</Label>
-                <span className="col-span-3">{expense.name}</span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">Category:</Label>
-                <span className="col-span-3">{expense.category}</span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">Amount:</Label>
-                <span className="col-span-3">${expense.amount.toFixed(2)}</span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">Date:</Label>
-                <span className="col-span-3">{format(new Date(expense.date), 'PPP')}</span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">Merchant:</Label>
-                <span className="col-span-3">{expense.merchant || 'N/A'}</span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">VAT Code:</Label>
-                <span className="col-span-3">{expense.vat_code || 'N/A'}</span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-medium">TVSH (%):</Label>
-                <span className="col-span-3">{expense.tvsh_percentage}%</span>
+          <ResizablePanel defaultSize={50} minSize={30} className="overflow-y-auto"> {/* Removed p-6 */}
+            <div className="p-6"> {/* Added div for padding */}
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">Name:</Label>
+                  <span className="col-span-3">{expense.name}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">Category:</Label>
+                  <span className="col-span-3">{expense.category}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">Amount:</Label>
+                  <span className="col-span-3">${expense.amount.toFixed(2)}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">Date:</Label>
+                  <span className="col-span-3">{format(new Date(expense.date), 'PPP')}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">Merchant:</Label>
+                  <span className="col-span-3">{expense.merchant || 'N/A'}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">VAT Code:</Label>
+                  <span className="col-span-3">{expense.vat_code || 'N/A'}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label className="text-right font-medium">TVSH (%):</Label>
+                  <span className="col-span-3">{expense.tvsh_percentage}%</span>
+                </div>
               </div>
             </div>
           </ResizablePanel>
