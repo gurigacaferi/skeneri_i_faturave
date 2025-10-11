@@ -202,7 +202,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           const updatedExp = { ...exp, [field]: value };
           // If vat_code changes, update tvsh_percentage
           if (field === 'vat_code') {
-            updatedExp.tvsh_percentage = getPercentageFromVatCode(value);
+            updatedExp.tvsh_percentage = getPercentageFromVatsCode(value);
           }
           return updatedExp;
         }
@@ -337,7 +337,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col"> {/* Removed p-0 */}
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col p-0">
         <DialogHeader className="p-6 pb-0">
           <DialogTitle>Review and Split Expenses</DialogTitle>
           <DialogDescription>
@@ -345,157 +345,153 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
         <ResizablePanelGroup direction="horizontal" className="flex-1">
-          <ResizablePanel defaultSize={50} minSize={30} className="overflow-y-auto"> {/* Removed p-6 */}
-            <div className="p-6"> {/* Added div for padding */}
-              <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
-                {firstReceiptImage ? (
-                  <img src={firstReceiptImage} alt="Receipt" className="max-w-full max-h-full object-contain rounded-md shadow-md" />
-                ) : (
-                  <p className="text-muted-foreground">No receipt image available.</p>
-                )}
-              </div>
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
+            <div className="flex flex-col items-center justify-center h-full bg-secondary/20 rounded-lg p-4">
+              {firstReceiptImage ? (
+                <img src={firstReceiptImage} alt="Receipt" className="max-w-full max-h-full object-contain rounded-md shadow-md" />
+              ) : (
+                <p className="text-muted-foreground">No receipt image available.</p>
+              )}
             </div>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={50} minSize={30} className="overflow-y-auto"> {/* Removed p-6 */}
-            <div className="p-6"> {/* Added div for padding */}
-              <div className="grid gap-4">
-                {expenses.length === 0 && (
-                  <p className="text-center text-gray-500 dark:text-gray-400">No expenses to display. Click "Add Expense" to start.</p>
-                )}
-                {expenses.map((exp, index) => (
-                  <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
-                    <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Expense #{index + 1} (Receipt ID: {exp.receiptId.substring(0, 8)}...)
-                    </div>
-                    <div className="col-span-6 md:col-span-3">
-                      <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
-                      <Input
-                        id={`name-${exp.tempId}`}
-                        value={exp.name}
-                        onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)}
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="col-span-6 md:col-span-3">
-                      <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
-                      <Select
-                        onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)}
-                        value={exp.category}
-                        disabled={loading}
-                      >
-                        <SelectTrigger id={`category-${exp.tempId}`}>
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                            <SelectGroup key={mainCategory}>
-                              <SelectLabel>{mainCategory}</SelectLabel>
-                              {subcategories.map((subCategory) => (
-                                <SelectItem key={subCategory} value={subCategory}>
-                                  {subCategory}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-6 md:col-span-2">
-                      <Label htmlFor={`amount-${exp.tempId}`}>Amount</Label>
-                      <Input
-                        id={`amount-${exp.tempId}`}
-                        type="number"
-                        step="0.01"
-                        value={exp.amount}
-                        onChange={(e) => handleUpdateExpense(exp.tempId, 'amount', parseFloat(e.target.value) || 0)}
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="col-span-6 md:col-span-2">
-                      <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
-                      <Select
-                        onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)}
-                        value={exp.vat_code}
-                        disabled={loading}
-                      >
-                        <SelectTrigger id={`vat_code-${exp.tempId}`}>
-                          <SelectValue placeholder="Select VAT code" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {vatCodes.map((code) => (
-                            <SelectItem key={code} value={code}>
-                              {code}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-6 md:col-span-2">
-                      <Label htmlFor={`date-${exp.tempId}`}>Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={'outline'}
-                            className={cn(
-                              'w-full justify-start text-left font-normal',
-                              !exp.date && 'text-muted-foreground'
-                            )}
-                            disabled={loading}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {exp.date ? format(exp.date, 'PPP') : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={exp.date}
-                            onSelect={(date) => handleUpdateExpense(exp.tempId, 'date', date!)}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="col-span-6 md:col-span-3">
-                      <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
-                      <Input
-                        id={`merchant-${exp.tempId}`}
-                        value={exp.merchant || ''}
-                        onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)}
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="col-span-12 md:col-span-3 flex items-end justify-end space-x-2 mt-4 md:mt-0">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleSplitExpense(exp.tempId)}
-                        disabled={loading}
-                        title="Split Expense"
-                      >
-                        <Split className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleDeleteExpense(exp.tempId)}
-                        disabled={loading}
-                        title="Delete Expense"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+          <ResizablePanel defaultSize={50} minSize={30} className="p-6 overflow-y-auto">
+            <div className="grid gap-4">
+              {expenses.length === 0 && (
+                <p className="text-center text-gray-500 dark:text-gray-400">No expenses to display. Click "Add Expense" to start.</p>
+              )}
+              {expenses.map((exp, index) => (
+                <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
+                  <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Expense #{index + 1} (Receipt ID: {exp.receiptId.substring(0, 8)}...)
                   </div>
-                ))}
-                <Button onClick={handleAddExpense} variant="secondary" className="mt-4" disabled={loading}>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
-                </Button>
-              </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
+                    <Input
+                      id={`name-${exp.tempId}`}
+                      value={exp.name}
+                      onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
+                    <Select
+                      onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)}
+                      value={exp.category}
+                      disabled={loading}
+                    >
+                      <SelectTrigger id={`category-${exp.tempId}`}>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                          <SelectGroup key={mainCategory}>
+                            <SelectLabel>{mainCategory}</SelectLabel>
+                            {subcategories.map((subCategory) => (
+                              <SelectItem key={subCategory} value={subCategory}>
+                                {subCategory}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`amount-${exp.tempId}`}>Amount</Label>
+                    <Input
+                      id={`amount-${exp.tempId}`}
+                      type="number"
+                      step="0.01"
+                      value={exp.amount}
+                      onChange={(e) => handleUpdateExpense(exp.tempId, 'amount', parseFloat(e.target.value) || 0)}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
+                    <Select
+                      onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)}
+                      value={exp.vat_code}
+                      disabled={loading}
+                    >
+                      <SelectTrigger id={`vat_code-${exp.tempId}`}>
+                        <SelectValue placeholder="Select VAT code" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vatCodes.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`date-${exp.tempId}`}>Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={'outline'}
+                          className={cn(
+                            'w-full justify-start text-left font-normal',
+                            !exp.date && 'text-muted-foreground'
+                          )}
+                          disabled={loading}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {exp.date ? format(exp.date, 'PPP') : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={exp.date}
+                          onSelect={(date) => handleUpdateExpense(exp.tempId, 'date', date!)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
+                    <Input
+                      id={`merchant-${exp.tempId}`}
+                      value={exp.merchant || ''}
+                      onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="col-span-12 md:col-span-3 flex items-end justify-end space-x-2 mt-4 md:mt-0">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleSplitExpense(exp.tempId)}
+                      disabled={loading}
+                      title="Split Expense"
+                    >
+                      <Split className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => handleDeleteExpense(exp.tempId)}
+                      disabled={loading}
+                      title="Delete Expense"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <Button onClick={handleAddExpense} variant="secondary" className="mt-4" disabled={loading}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
+              </Button>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
-        <DialogFooter className="p-6 border-t"> {/* Moved here, added padding and border */}
+        <DialogFooter className="p-6 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
