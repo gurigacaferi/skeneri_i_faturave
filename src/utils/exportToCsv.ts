@@ -12,7 +12,7 @@ interface Expense {
   created_at: string;
 }
 
-export const exportExpensesToCsv = (expenses: Expense[], batchName: string) => {
+export const exportExpensesToCsv = (expenses: Expense[], fileName: string) => {
   if (!expenses || expenses.length === 0) {
     console.warn('No expenses to export.');
     return;
@@ -36,7 +36,7 @@ export const exportExpensesToCsv = (expenses: Expense[], batchName: string) => {
     const formattedBillDate = format(billDate, 'yyyy-MM-dd');
     const dueDate = addDays(billDate, 30); // Assume Net 30 if no specific due date is available
     const formattedDueDate = format(dueDate, 'yyyy-MM-dd');
-    const billNo = `${batchName.replace(/\s/g, '_')}-${expense.id.substring(0, 8)}`; // Generate a unique bill number
+    const billNo = `${fileName.replace(/\s/g, '_')}-${expense.id.substring(0, 8)}`; // Generate a unique bill number
     
     // Use the actual VAT code from the expense, default to "No VAT" only if null/undefined/empty
     const vatCodeToExport = expense.vat_code || 'No VAT';
@@ -58,7 +58,7 @@ export const exportExpensesToCsv = (expenses: Expense[], batchName: string) => {
   const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
-  link.setAttribute('download', `${batchName.replace(/\s/g, '_')}_quickbooks_bills.csv`);
+  link.setAttribute('download', `${fileName}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

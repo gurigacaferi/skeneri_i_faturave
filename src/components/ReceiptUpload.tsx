@@ -9,6 +9,8 @@ import { useSession } from '@/components/SessionContextProvider';
 import { Loader2, UploadCloud, CheckCircle2, Link, Download } from 'lucide-react';
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { exportExpensesToCsv } from '@/utils/exportToCsv';
+import { DateRangePickerForExport } from './DateRangePickerForExport'; // Import the new component
+import { format } from 'date-fns';
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -40,6 +42,11 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isConnectedToQuickBooks, setIsConnectedToQuickBooks] = useState(false);
   const [connectingQuickBooks, setConnectingQuickBooks] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportDateRange, setExportDateRange] = useState<{ from: Date | undefined; to: Date | undefined; label: string }>({
+    from: undefined,
+    to: undefined,
+    label: "Select Range",
+  });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles(acceptedFiles);
@@ -194,13 +201,13 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     }
   };
 
-  const handleExportBatchToCsv = async () => {
+  const handleExportExpenses = async () => {
     if (!session) {
       showError('You must be logged in to export expenses.');
       return;
     }
-    if (!selectedBatchId) {
-      showError('Please select or create an expense batch first.');
+    if (!exportDateRange.from || !exportDateRange.to) {
+      showError('Please select a valid date range for export.');
       return;
     }
 
@@ -208,34 +215,27 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     const toastId = showLoading('Preparing CSV export...');
 
     try {
-      const { data: expenses, error: expensesError } = await supabase
+      let query = supabase
         .from('expenses')
         .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
-        .eq('batch_id', selectedBatchId)
-        .eq('user_id', session.user.id);
+        .eq('user_id', session.user.id)
+        .gte('date', format(exportDateRange.from, 'yyyy-MM-dd'))
+        .lte('date', format(exportDateRange.to, 'yyyy-MM-dd'))
+        .order('date', { ascending: false });
+
+      const { data: expenses, error: expensesError } = await query;
 
       if (expensesError) {
         throw new Error(expensesError.message);
       }
 
       if (!expenses || expenses.length === 0) {
-        showError('No expenses found in the current batch to export.');
+        showError('No expenses found for the selected date range to export.');
         return;
       }
 
-      const { data: batchData, error: batchError } = await supabase
-        .from('expense_batches')
-        .select('name')
-        .eq('id', selectedBatchId)
-        .single();
-
-      if (batchError) {
-        console.error('Error fetching batch name:', batchError.message);
-      }
-
-      const batchName = batchData ? batchData.name : 'Current_Batch';
-
-      exportExpensesToCsv(expenses, batchName);
+      const exportFileName = `Expenses_${exportDateRange.label.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd_HHmmss')}`;
+      exportExpensesToCsv(expenses, exportFileName);
       showSuccess('Expenses exported to CSV successfully!');
     } catch (error: any) {
       showError('Failed to export expenses to CSV: ' + error.message);
@@ -308,18 +308,27 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
               )}
               {isConnectedToQuickBooks ? 'QuickBooks Connected' : 'Connect to QuickBooks'}
             </Button>
-            <Button
-              onClick={handleExportBatchToCsv}
-              disabled={!selectedBatchId || exportingCsv}
-              variant="outline"
-            >
-              {exportingCsv ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
-              Export Current Batch to CSV
-            </Button>
+            <div className="flex flex-col gap-2 w-full sm:w-auto">
+              <DateRangePickerForExport onDateRangeChange={setExportDateRange} />
+              <Button
+                onClick={handleExportExpenses}
+                disabled={!exportDateRange.from || !exportDateRange.to || exportingCsv}
+                variant="outline"
+                className="w-full"
+              >
+                {exportingCsv ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Expenses to CSV
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
