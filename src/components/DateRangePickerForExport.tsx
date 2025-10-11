@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subWeeks, subMonths, subYears } from "date-fns";
+import { format, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, subWeeks, subMonths, subYears, parse } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { DateRange } from "react-day-picker";
 
@@ -10,11 +10,30 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface DateRangePickerForExportProps extends React.HTMLAttributes<HTMLDivElement> {
   onDateRangeChange: (range: { from: Date | undefined; to: Date | undefined; label: string }) => void;
   initialRange?: { from: Date | undefined; to: Date | undefined; label: string };
 }
+
+// Helper to parse MMDDYY string to Date
+const parseMMDDYY = (dateString: string): Date | undefined => {
+  if (!dateString || dateString.length !== 6) return undefined;
+  try {
+    // Use parse from date-fns with a specific format string
+    const parsedDate = parse(dateString, 'MMddyy', new Date());
+    // Validate if the parsed date is actually valid and not just a default date
+    if (isNaN(parsedDate.getTime())) {
+      return undefined;
+    }
+    return parsedDate;
+  } catch (e) {
+    console.error("Error parsing date string:", dateString, e);
+    return undefined;
+  }
+};
 
 export function DateRangePickerForExport({
   className,
@@ -27,10 +46,25 @@ export function DateRangePickerForExport({
     to: endOfMonth(today),
   });
   const [selectedInterval, setSelectedInterval] = React.useState<string>(initialRange?.label || "this_month");
+  const [fromText, setFromText] = React.useState<string>('');
+  const [toText, setToText] = React.useState<string>('');
 
+  // Effect to synchronize internal date state with text inputs
   React.useEffect(() => {
+    if (date?.from) {
+      setFromText(format(date.from, 'MMddyy'));
+    } else {
+      setFromText('');
+    }
+    if (date?.to) {
+      setToText(format(date.to, 'MMddyy'));
+    } else {
+      setToText('');
+    }
     if (date?.from && date?.to) {
       onDateRangeChange({ from: date.from, to: date.to, label: selectedInterval });
+    } else {
+      onDateRangeChange({ from: undefined, to: undefined, label: selectedInterval });
     }
   }, [date, selectedInterval, onDateRangeChange]);
 
@@ -87,7 +121,20 @@ export function DateRangePickerForExport({
         break;
     }
     setDate({ from: newFrom, to: newTo });
-    onDateRangeChange({ from: newFrom, to: newTo, label });
+  };
+
+  const handleFromTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFromText(value);
+    const parsed = parseMMDDYY(value);
+    setDate((prev) => ({ ...prev, from: parsed }));
+  };
+
+  const handleToTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setToText(value);
+    const parsed = parseMMDDYY(value);
+    setDate((prev) => ({ ...prev, to: parsed }));
   };
 
   return (
@@ -109,49 +156,71 @@ export function DateRangePickerForExport({
       </Select>
 
       {selectedInterval === "custom" && (
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              id="date"
-              variant={"outline"}
-              className={cn(
-                "w-full justify-start text-left font-normal",
-                !date?.from && "text-muted-foreground"
-              )}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {date?.from ? (
-                date.to ? (
-                  <>
-                    {format(date.from, "LLL dd, y")} -{" "}
-                    {format(date.to, "LLL dd, y")}
-                  </>
-                ) : (
-                  format(date.from, "LLL dd, y")
-                )
-              ) : (
-                <span>Pick a date</span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              initialFocus
-              mode="range"
-              defaultMonth={date?.from}
-              selected={date}
-              onSelect={(newDateRange) => {
-                setDate(newDateRange);
-                onDateRangeChange({
-                  from: newDateRange?.from,
-                  to: newDateRange?.to,
-                  label: "Custom Range",
-                });
-              }}
-              numberOfMonths={2}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="from-date" className="sr-only">From</Label>
+            <Input
+              id="from-date"
+              placeholder="MMDDYY (From)"
+              value={fromText}
+              onChange={handleFromTextChange}
+              className="w-full"
+              maxLength={6}
             />
-          </PopoverContent>
-        </Popover>
+            <Label htmlFor="to-date" className="sr-only">To</Label>
+            <Input
+              id="to-date"
+              placeholder="MMDDYY (To)"
+              value={toText}
+              onChange={handleToTextChange}
+              className="w-full"
+              maxLength={6}
+            />
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                id="date"
+                variant={"outline"}
+                className={cn(
+                  "w-full justify-start text-left font-normal",
+                  !date?.from && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {date?.from ? (
+                  date.to ? (
+                    <>
+                      {format(date.from, "LLL dd, y")} -{" "}
+                      {format(date.to, "LLL dd, y")}
+                    </>
+                  ) : (
+                    format(date.from, "LLL dd, y")
+                  )
+                ) : (
+                  <span>Pick a date</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 min-h-[280px]" align="start">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={date?.from}
+                selected={date}
+                onSelect={(newDateRange) => {
+                  setDate(newDateRange);
+                  onDateRangeChange({
+                    from: newDateRange?.from,
+                    to: newDateRange?.to,
+                    label: "Custom Range",
+                  });
+                }}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       )}
     </div>
   );
