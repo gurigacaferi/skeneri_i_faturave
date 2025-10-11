@@ -15,23 +15,34 @@ interface ReceiptUploadProps {
   selectedBatchId: string | null;
 }
 
+// Define a type for expenses extracted from a single receipt, including its receiptId
+interface ExtractedExpenseWithReceiptId {
+  receiptId: string;
+  expense: {
+    name: string;
+    category: string;
+    amount: number;
+    date: string;
+    merchant: string | null;
+    tvsh_percentage: number;
+    vat_code: string;
+  };
+}
+
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const { session, supabase } = useSession();
 
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
-  const [extractedExpenses, setExtractedExpenses] = useState<any[] | null>(null);
-  const [currentReceiptId, setCurrentReceiptId] = useState<string | null>(null);
+  const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>(null);
 
   const [isConnectedToQuickBooks, setIsConnectedToQuickBooks] = useState(false);
   const [connectingQuickBooks, setConnectingQuickBooks] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      setFile(acceptedFiles[0]);
-    }
+    setFiles(acceptedFiles);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -41,7 +52,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       'image/png': ['.png'],
       'application/pdf': ['.pdf'],
     },
-    multiple: false,
+    multiple: true, // Allow multiple files
   });
 
   const checkQuickBooksConnection = useCallback(async () => {
@@ -67,8 +78,8 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   }, [checkQuickBooksConnection]);
 
   const handleFileUpload = async () => {
-    if (!file) {
-      showError('Please select a file to upload.');
+    if (files.length === 0) {
+      showError('Please select at least one file to upload.');
       return;
     }
 
@@ -83,13 +94,18 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     }
 
     setLoading(true);
-    const toastId = showLoading('Processing receipt with AI...');
+    const toastId = showLoading(`Processing ${files.length} receipt(s) with AI...`);
+    const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
+    let hasError = false;
 
-    try {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onloadend = async () => {
-        const base64Image = reader.result as string;
+    for (const file of files) {
+      try {
+        const base64Image = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = (error) => reject(new Error('Failed to read file: ' + error));
+        });
 
         const { data, error } = await supabase.functions.invoke('process-receipt', {
           body: { base64Image, filename: file.name, batchId: selectedBatchId },
@@ -97,41 +113,48 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         });
 
         if (error) {
-          console.error('Supabase Function Invoke Error:', error);
-          throw new Error(error.message || 'Failed to process receipt with AI.');
+          console.error(`Supabase Function Invoke Error for ${file.name}:`, error);
+          throw new Error(error.message || `Failed to process receipt ${file.name} with AI.`);
         }
 
-        dismissToast(toastId);
-        showSuccess('Receipt processed by AI. Please review and save expenses.');
-        setFile(null);
-
-        setExtractedExpenses(data.expenses);
-        setCurrentReceiptId(data.receiptId);
-        setIsSplitterDialogOpen(true);
-      };
-      reader.onerror = (error) => {
-        throw new Error('Failed to read file: ' + error);
-      };
-    } catch (error: any) {
-      dismissToast(toastId);
-
-      let errorMessage = 'An unexpected error occurred.';
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        errorMessage = 'Network error: Could not connect to the server. Please check your internet connection or try again later.';
-      } else if (error.message) {
-        errorMessage = error.message;
+        if (data.expenses && Array.isArray(data.expenses)) {
+          data.expenses.forEach((exp: any) => {
+            processedExpenses.push({ receiptId: data.receiptId, expense: exp });
+          });
+        }
+      } catch (error: any) {
+        hasError = true;
+        let errorMessage = `Failed to process ${file.name}: `;
+        if (error instanceof TypeError && error.message === 'Failed to fetch') {
+          errorMessage += 'Network error. Please check your internet connection.';
+        } else if (error.message) {
+          errorMessage += error.message;
+        }
+        showError(errorMessage);
+        console.error(`Error processing ${file.name}:`, error);
       }
-      showError(errorMessage);
-      console.error('Receipt upload error:', error);
-    } finally {
-      setLoading(false);
     }
+
+    dismissToast(toastId);
+    setLoading(false);
+    setFiles([]); // Clear selected files
+
+    if (hasError && processedExpenses.length === 0) {
+      showError('No receipts were processed successfully.');
+      return;
+    } else if (hasError) {
+      showSuccess('Some receipts were processed. Please review the extracted expenses.');
+    } else {
+      showSuccess('All receipts processed by AI. Please review and save expenses.');
+    }
+
+    setAllExtractedExpensesForDialog(processedExpenses);
+    setIsSplitterDialogOpen(true);
   };
 
   const handleExpensesSaved = () => {
     setIsSplitterDialogOpen(false);
-    setExtractedExpenses(null);
-    setCurrentReceiptId(null);
+    setAllExtractedExpensesForDialog(null);
     onReceiptProcessed();
   };
 
@@ -228,7 +251,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       <Card className="w-full max-w-2xl mx-auto">
         <CardHeader>
           <CardTitle>Upload Receipt</CardTitle>
-          <CardDescription>Drag and drop your receipt image or PDF here, or click to select a file.</CardDescription>
+          <CardDescription>Drag and drop your receipt image(s) or PDF(s) here, or click to select files.</CardDescription>
         </CardHeader>
         <CardContent>
           <div
@@ -242,10 +265,12 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
               <div className="flex flex-col items-center justify-center space-y-2">
                 <UploadCloud className="h-12 w-12 text-gray-400 dark:text-gray-500" />
                 <p className="text-gray-600 dark:text-gray-400">
-                  Drag 'n' drop a receipt image or PDF here, or click to select one
+                  Drag 'n' drop receipt images or PDFs here, or click to select them
                 </p>
-                {file && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Selected file: {file.name}</p>
+                {files.length > 0 && (
+                  <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Selected files: {files.map(f => f.name).join(', ')}
+                  </div>
                 )}
               </div>
             )}
@@ -253,7 +278,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           <Button
             onClick={handleFileUpload}
             className="w-full mt-6"
-            disabled={!file || loading || !selectedBatchId}
+            disabled={files.length === 0 || loading || !selectedBatchId}
           >
             {loading ? (
               <>
@@ -261,7 +286,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 Processing...
               </>
             ) : (
-              'Process Receipt'
+              `Process ${files.length} Receipt(s)`
             )}
           </Button>
           {!selectedBatchId && (
@@ -302,8 +327,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       <ExpenseSplitterDialog
         open={isSplitterDialogOpen}
         onOpenChange={setIsSplitterDialogOpen}
-        initialExpenses={extractedExpenses}
-        receiptId={currentReceiptId}
+        initialExpenses={allExtractedExpensesForDialog}
         batchId={selectedBatchId}
         onExpensesSaved={handleExpensesSaved}
       />

@@ -23,6 +23,7 @@ import { v4 as uuidv4 } from 'uuid'; // For generating temporary IDs
 
 interface ExpenseItem {
   tempId: string; // Temporary ID for UI management
+  receiptId: string; // Link to the original receipt
   name: string;
   category: string;
   amount: number;
@@ -32,11 +33,24 @@ interface ExpenseItem {
   vat_code: string; // Added new vat_code field
 }
 
+// Define the structure for initial expenses coming into the dialog
+interface InitialExpenseData {
+  receiptId: string;
+  expense: {
+    name: string;
+    category: string;
+    amount: number;
+    date: string; // Date as string from AI
+    merchant: string | null;
+    tvsh_percentage: number;
+    vat_code: string;
+  };
+}
+
 interface ExpenseSplitterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialExpenses: Omit<ExpenseItem, 'tempId' | 'date'>[] | null;
-  receiptId: string | null;
+  initialExpenses: InitialExpenseData[] | null; // Now an array of objects with receiptId
   batchId: string | null;
   onExpensesSaved: () => void;
 }
@@ -132,7 +146,6 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   open,
   onOpenChange,
   initialExpenses,
-  receiptId,
   batchId,
   onExpensesSaved,
 }) => {
@@ -142,13 +155,16 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   useEffect(() => {
     if (open && initialExpenses) {
-      const parsedExpenses: ExpenseItem[] = initialExpenses.map((exp) => ({
-        ...exp,
+      const parsedExpenses: ExpenseItem[] = initialExpenses.map((data) => ({
         tempId: uuidv4(),
-        date: exp.date ? parseISO(exp.date) : new Date(),
-        amount: parseFloat(exp.amount.toFixed(2)),
-        tvsh_percentage: getPercentageFromVatCode(exp.vat_code || 'No VAT'), // Derive from vat_code
-        vat_code: exp.vat_code || 'No VAT', // Ensure vat_code is set
+        receiptId: data.receiptId, // Assign the receiptId
+        name: data.expense.name,
+        category: data.expense.category,
+        amount: parseFloat(data.expense.amount.toFixed(2)),
+        date: data.expense.date ? parseISO(data.expense.date) : new Date(),
+        merchant: data.expense.merchant,
+        vat_code: data.expense.vat_code || 'No VAT',
+        tvsh_percentage: getPercentageFromVatCode(data.expense.vat_code || 'No VAT'),
       }));
       setExpenses(parsedExpenses.length > 0 ? parsedExpenses : [createNewEmptyExpense()]);
     } else if (open && !initialExpenses) {
@@ -158,6 +174,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   const createNewEmptyExpense = (baseExpense?: Partial<ExpenseItem>): ExpenseItem => ({
     tempId: uuidv4(),
+    receiptId: baseExpense?.receiptId || 'unknown', // Default to 'unknown' or handle as needed
     name: baseExpense?.name || '',
     category: baseExpense?.category || allSubcategories[0] || '',
     amount: baseExpense?.amount || 0,
@@ -244,8 +261,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
       return;
     }
 
-    if (!session || !receiptId || !batchId) {
-      showError('Authentication or necessary IDs are missing. Please log in and ensure a batch is selected.');
+    if (!session || !batchId) {
+      showError('Authentication or batch ID is missing. Please log in and ensure a batch is selected.');
       return;
     }
 
@@ -255,7 +272,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
     try {
       const expensesToInsert = expenses.map((exp) => ({
         user_id: session.user.id,
-        receipt_id: receiptId,
+        receipt_id: exp.receiptId, // Use the receiptId from the expense item
         batch_id: batchId,
         name: exp.name.trim(),
         category: exp.category,
@@ -325,7 +342,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           {expenses.map((exp, index) => (
             <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
               <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Expense #{index + 1}
+                Expense #{index + 1} (Receipt ID: {exp.receiptId.substring(0, 8)}...)
               </div>
               <div className="col-span-6 md:col-span-3">
                 <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
