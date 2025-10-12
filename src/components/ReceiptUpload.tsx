@@ -6,11 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useSession } from '@/components/SessionContextProvider';
-import { Loader2, UploadCloud, CheckCircle2, Link, Download, FileText, X, Image, File as FileIcon } from 'lucide-react';
+import { Loader2, UploadCloud, CheckCircle2, Link, FileText, X, Image, File as FileIcon } from 'lucide-react';
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
-import { exportExpensesToCsv } from '@/utils/exportToCsv';
-import { DateRangePickerForExport } from './DateRangePickerForExport';
-import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid'; // Import uuid for unique file IDs
 
 interface ReceiptUploadProps {
@@ -45,12 +42,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
   const [isConnectedToQuickBooks, setIsConnectedToQuickBooks] = useState(false);
   const [connectingQuickBooks, setConnectingQuickBooks] = useState(false);
-  const [exportingCsv, setExportingCsv] = useState(false);
-  const [exportDateRange, setExportDateRange] = useState<{ from: Date | undefined; to: Date | undefined; label: string }>({
-    from: undefined,
-    to: undefined,
-    label: "Select Range",
-  });
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles: UploadedFile[] = acceptedFiles.map(file =>
@@ -183,37 +174,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     }
   };
 
-  const handleExportExpenses = async () => {
-    if (!session || !exportDateRange.from || !exportDateRange.to) {
-      showError('Please log in and select a valid date range for export.');
-      return;
-    }
-    setExportingCsv(true);
-    const toastId = showLoading('Preparing CSV export...');
-    try {
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
-        .eq('user_id', session.user.id)
-        .gte('date', format(exportDateRange.from, 'yyyy-MM-dd'))
-        .lte('date', format(exportDateRange.to, 'yyyy-MM-dd'))
-        .order('date', { ascending: false });
-      if (error) throw new Error(error.message);
-      if (!data || data.length === 0) {
-        showError('No expenses found for the selected date range.');
-        return;
-      }
-      const fileName = `Expenses_${exportDateRange.label.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}`;
-      exportExpensesToCsv(data, fileName);
-      showSuccess('Expenses exported successfully!');
-    } catch (error: any) {
-      showError('Failed to export expenses: ' + error.message);
-    } finally {
-      dismissToast(toastId);
-      setExportingCsv(false);
-    }
-  };
-
   return (
     <>
       <Card className="w-full max-w-3xl mx-auto shadow-lg shadow-black/5 border-0">
@@ -280,40 +240,22 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             <p className="text-sm text-destructive mt-2 text-center">Please select or create an expense batch.</p>
           )}
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 mt-8 pt-6 border-t">
-            <div className="flex-1 w-full">
-              <Button
-                onClick={handleConnectQuickBooks}
-                variant={isConnectedToQuickBooks ? 'secondary' : 'outline'}
-                disabled={connectingQuickBooks}
-                className="w-full"
-              >
-                {connectingQuickBooks ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : isConnectedToQuickBooks ? (
-                  <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-                ) : (
-                  <Link className="mr-2 h-4 w-4" />
-                )}
-                {isConnectedToQuickBooks ? 'QuickBooks Connected' : 'Connect to QuickBooks'}
-              </Button>
-            </div>
-            <div className="flex-1 w-full flex flex-col gap-2">
-              <DateRangePickerForExport onDateRangeChange={setExportDateRange} />
-              <Button
-                onClick={handleExportExpenses}
-                disabled={!exportDateRange.from || !exportDateRange.to || exportingCsv}
-                variant="outline"
-                className="w-full"
-              >
-                {exportingCsv ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="mr-2 h-4 w-4" />
-                )}
-                Export to CSV
-              </Button>
-            </div>
+          <div className="mt-8 pt-6 border-t">
+            <Button
+              onClick={handleConnectQuickBooks}
+              variant={isConnectedToQuickBooks ? 'secondary' : 'outline'}
+              disabled={connectingQuickBooks}
+              className="w-full"
+            >
+              {connectingQuickBooks ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : isConnectedToQuickBooks ? (
+                <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+              ) : (
+                <Link className="mr-2 h-4 w-4" />
+              )}
+              {isConnectedToQuickBooks ? 'QuickBooks Connected' : 'Connect to QuickBooks'}
+            </Button>
           </div>
         </CardContent>
       </Card>
