@@ -42,7 +42,11 @@ interface Expense {
   created_at: string;
 }
 
-const ExpensesList: React.FC = () => {
+interface ExpensesListProps {
+  refreshTrigger: number; // New prop to trigger refresh
+}
+
+const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const { supabase, session } = useSession();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +108,7 @@ const ExpensesList: React.FC = () => {
 
   useEffect(() => {
     fetchExpenses();
-  }, [fetchExpenses]);
+  }, [fetchExpenses, refreshTrigger]); // Add refreshTrigger to dependencies
 
   const handleClearFilters = () => {
     setDateRange({ from: undefined, to: undefined, label: "custom" });

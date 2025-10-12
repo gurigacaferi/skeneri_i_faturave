@@ -10,7 +10,7 @@ import { useDefaultBatch } from "@/hooks/useDefaultBatch";
 const Index = () => {
   const { session, loading, supabase } = useSession();
   const navigate = useNavigate();
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Renamed from refreshKey
   const { selectedBatchId, loadingBatches, refreshBatches } = useDefaultBatch();
 
   useEffect(() => {
@@ -33,7 +33,7 @@ const Index = () => {
   };
 
   const handleReceiptProcessed = () => {
-    setRefreshKey(prevKey => prevKey + 1);
+    setRefreshTrigger(prevKey => prevKey + 1); // Update refreshTrigger
     refreshBatches();
   };
 
@@ -75,7 +75,7 @@ const Index = () => {
             <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} selectedBatchId={selectedBatchId} />
           </TabsContent>
           <TabsContent value="expenses" className="mt-6">
-            <ExpensesList key={`expenses-${refreshKey}`} />
+            <ExpensesList refreshTrigger={refreshTrigger} /> {/* Pass refreshTrigger as a prop */}
           </TabsContent>
         </Tabs>
       </main>
