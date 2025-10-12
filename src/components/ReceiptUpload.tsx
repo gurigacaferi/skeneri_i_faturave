@@ -55,8 +55,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/jpeg': ['.jpeg', '.jpg'],
-      'image/png': ['.png'],
+      'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp', '.heic'], // Broaden image acceptance
       'application/pdf': ['.pdf'],
     },
     multiple: true,
