@@ -27,8 +27,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import EditExpenseDialog from './EditExpenseDialog';
-import { DateRangeFilter } from './DateRangeFilter'; // Import the new DateRangeFilter
-import { exportExpensesToCsv } from '@/utils/exportToCsv'; // Import the export utility
+import { DateRangeFilter } from './DateRangeFilter';
+import { exportExpensesToCsv } from '@/utils/exportToCsv';
+import { useDebounce } from '@/hooks/useDebounce'; // Import the new debounce hook
 
 interface Expense {
   id: string;
@@ -43,7 +44,7 @@ interface Expense {
 }
 
 interface ExpensesListProps {
-  refreshTrigger: number; // New prop to trigger refresh
+  refreshTrigger: number;
 }
 
 const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
@@ -53,8 +54,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
-  // Filter states
+  // State for filter inputs (updates immediately)
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined; label: string }>({
     from: undefined,
     to: undefined,
@@ -63,52 +65,61 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [minAmount, setMinAmount] = useState<string>('');
   const [maxAmount, setMaxAmount] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [isExporting, setIsExporting] = useState(false);
 
-  const fetchExpenses = useCallback(async () => {
-    if (!session) return;
+  // Debounced values for API calls (update after 500ms of inactivity)
+  const debouncedMinAmount = useDebounce(minAmount, 500);
+  const debouncedMaxAmount = useDebounce(maxAmount, 500);
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
-    setLoading(true);
-    let query = supabase
-      .from('expenses')
-      .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
-      .eq('user_id', session.user.id);
-
-    // Apply date filter
-    if (dateRange.from) {
-      query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
-    }
-    if (dateRange.to) {
-      query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
-    }
-
-    // Apply amount filter
-    if (minAmount) {
-      query = query.gte('amount', parseFloat(minAmount));
-    }
-    if (maxAmount) {
-      query = query.lte('amount', parseFloat(maxAmount));
-    }
-
-    // Apply search term filter
-    if (searchTerm) {
-      const searchLower = `%${searchTerm.toLowerCase()}%`;
-      query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
-    }
-
-    const { data, error } = await query.order('date', { ascending: false });
-
-    if (error) {
-      showError('Failed to fetch expenses: ' + error.message);
-    } else {
-      setExpenses(data || []);
-    }
-    setLoading(false);
-  }, [session, supabase, dateRange, minAmount, maxAmount, searchTerm]);
-
+  // Effect for fetching data, now depends on debounced values
   useEffect(() => {
+    const fetchExpenses = async () => {
+      if (!session) return;
+
+      setLoading(true);
+      let query = supabase
+        .from('expenses')
+        .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
+        .eq('user_id', session.user.id);
+
+      // Apply filters using debounced values
+      if (dateRange.from) {
+        query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
+      }
+      if (dateRange.to) {
+        query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
+      }
+      if (debouncedMinAmount) {
+        query = query.gte('amount', parseFloat(debouncedMinAmount));
+      }
+      if (debouncedMaxAmount) {
+        query = query.lte('amount', parseFloat(debouncedMaxAmount));
+      }
+      if (debouncedSearchTerm) {
+        const searchLower = `%${debouncedSearchTerm.toLowerCase()}%`;
+        query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
+      }
+
+      const { data, error } = await query.order('date', { ascending: false });
+
+      if (error) {
+        showError('Failed to fetch expenses: ' + error.message);
+      } else {
+        setExpenses(data || []);
+      }
+      setLoading(false);
+    };
+
     fetchExpenses();
-  }, [fetchExpenses, refreshTrigger]); // Add refreshTrigger to dependencies
+  }, [
+    session,
+    supabase,
+    dateRange,
+    debouncedMinAmount,
+    debouncedMaxAmount,
+    debouncedSearchTerm,
+    refreshTrigger,
+  ]);
 
   const handleClearFilters = () => {
     setDateRange({ from: undefined, to: undefined, label: "custom" });
@@ -119,20 +130,13 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
 
   const handleDeleteExpense = async (expenseId: string) => {
     if (!session) return;
-
     setDeletingId(expenseId);
     const toastId = showLoading('Deleting expense...');
-
     try {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', expenseId);
-
+      const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
       if (error) throw new Error(error.message);
-
       showSuccess('Expense deleted successfully!');
-      fetchExpenses();
+      // Data will refetch automatically due to refreshTrigger prop changing in parent
     } catch (error: any) {
       showError('Failed to delete expense: ' + error.message);
     } finally {
@@ -146,10 +150,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     setIsEditDialogOpen(true);
   };
 
-  const handleExpenseUpdated = () => {
-    fetchExpenses();
-  };
-
   const handleExportFilteredExpenses = () => {
     if (expenses.length === 0) {
       showError('No expenses to export with current filters.');
@@ -161,14 +161,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     showSuccess('Filtered expenses exported successfully!');
     setIsExporting(false);
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
 
   return (
     <Card className="w-full max-w-5xl mx-auto shadow-lg shadow-black/5 border-0">
@@ -223,21 +215,19 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             </Button>
             <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0}>
               {isExporting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Exporting...
-                </>
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</>
               ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Filtered
-                </>
+                <><Download className="mr-2 h-4 w-4" /> Export Filtered</>
               )}
             </Button>
           </div>
         </div>
 
-        {expenses.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : expenses.length === 0 ? (
           <div className="text-center py-12 text-foreground/60">
             <p>No expenses recorded yet or no expenses match your current filters.</p>
             <p className="text-sm">Try adjusting your filters or upload a receipt to get started!</p>
@@ -318,7 +308,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
           open={isEditDialogOpen}
           onOpenChange={setIsEditDialogOpen}
           expense={currentExpenseToEdit}
-          onExpenseUpdated={handleExpenseUpdated}
+          onExpenseUpdated={() => {
+            // No need to call fetchExpenses here, the refreshTrigger will handle it
+          }}
         />
       )}
     </Card>
