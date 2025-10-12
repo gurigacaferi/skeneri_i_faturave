@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useSession } from '@/components/SessionContextProvider';
 import {
   Table,
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -24,7 +24,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import EditExpenseDialog from './EditExpenseDialog';
+import { DateRangeFilter } from './DateRangeFilter'; // Import the new DateRangeFilter
+import { exportExpensesToCsv } from '@/utils/exportToCsv'; // Import the export utility
 
 interface Expense {
   id: string;
@@ -46,15 +50,49 @@ const ExpensesList: React.FC = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
 
-  const fetchExpenses = async () => {
+  // Filter states
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined; label: string }>({
+    from: undefined,
+    to: undefined,
+    label: "custom",
+  });
+  const [minAmount, setMinAmount] = useState<string>('');
+  const [maxAmount, setMaxAmount] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const fetchExpenses = useCallback(async () => {
     if (!session) return;
 
     setLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from('expenses')
       .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
-      .eq('user_id', session.user.id)
-      .order('date', { ascending: false });
+      .eq('user_id', session.user.id);
+
+    // Apply date filter
+    if (dateRange.from) {
+      query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
+    }
+    if (dateRange.to) {
+      query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
+    }
+
+    // Apply amount filter
+    if (minAmount) {
+      query = query.gte('amount', parseFloat(minAmount));
+    }
+    if (maxAmount) {
+      query = query.lte('amount', parseFloat(maxAmount));
+    }
+
+    // Apply search term filter
+    if (searchTerm) {
+      const searchLower = `%${searchTerm.toLowerCase()}%`;
+      query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
+    }
+
+    const { data, error } = await query.order('date', { ascending: false });
 
     if (error) {
       showError('Failed to fetch expenses: ' + error.message);
@@ -62,11 +100,18 @@ const ExpensesList: React.FC = () => {
       setExpenses(data || []);
     }
     setLoading(false);
-  };
+  }, [session, supabase, dateRange, minAmount, maxAmount, searchTerm]);
 
   useEffect(() => {
     fetchExpenses();
-  }, [session]);
+  }, [fetchExpenses]);
+
+  const handleClearFilters = () => {
+    setDateRange({ from: undefined, to: undefined, label: "custom" });
+    setMinAmount('');
+    setMaxAmount('');
+    setSearchTerm('');
+  };
 
   const handleDeleteExpense = async (expenseId: string) => {
     if (!session) return;
@@ -101,6 +146,18 @@ const ExpensesList: React.FC = () => {
     fetchExpenses();
   };
 
+  const handleExportFilteredExpenses = () => {
+    if (expenses.length === 0) {
+      showError('No expenses to export with current filters.');
+      return;
+    }
+    setIsExporting(true);
+    const fileName = `Filtered_Expenses_${dateRange.label.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}`;
+    exportExpensesToCsv(expenses, fileName);
+    showSuccess('Filtered expenses exported successfully!');
+    setIsExporting(false);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -116,10 +173,70 @@ const ExpensesList: React.FC = () => {
         <CardDescription>A list of all your tracked expenses.</CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg bg-secondary/30">
+          <div className="col-span-full flex items-center gap-2 text-lg font-semibold text-foreground/80">
+            <Filter className="h-5 w-5" /> Filters
+          </div>
+          <div className="col-span-full sm:col-span-2 md:col-span-1">
+            <Label htmlFor="date-filter">Date Range</Label>
+            <DateRangeFilter onDateRangeChange={setDateRange} initialRange={dateRange} />
+          </div>
+          <div className="col-span-full sm:col-span-2 md:col-span-1">
+            <Label htmlFor="min-amount">Min Amount</Label>
+            <Input
+              id="min-amount"
+              type="number"
+              step="0.01"
+              value={minAmount}
+              onChange={(e) => setMinAmount(e.target.value)}
+              placeholder="e.g., 10.00"
+            />
+          </div>
+          <div className="col-span-full sm:col-span-2 md:col-span-1">
+            <Label htmlFor="max-amount">Max Amount</Label>
+            <Input
+              id="max-amount"
+              type="number"
+              step="0.01"
+              value={maxAmount}
+              onChange={(e) => setMaxAmount(e.target.value)}
+              placeholder="e.g., 100.00"
+            />
+          </div>
+          <div className="col-span-full sm:col-span-2 md:col-span-1">
+            <Label htmlFor="search-term">Search</Label>
+            <Input
+              id="search-term"
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Name, merchant, category..."
+            />
+          </div>
+          <div className="col-span-full flex justify-end gap-2 mt-2">
+            <Button variant="outline" onClick={handleClearFilters}>
+              Clear Filters
+            </Button>
+            <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0}>
+              {isExporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Filtered
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
         {expenses.length === 0 ? (
           <div className="text-center py-12 text-foreground/60">
-            <p>No expenses recorded yet.</p>
-            <p className="text-sm">Upload a receipt to get started!</p>
+            <p>No expenses recorded yet or no expenses match your current filters.</p>
+            <p className="text-sm">Try adjusting your filters or upload a receipt to get started!</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
