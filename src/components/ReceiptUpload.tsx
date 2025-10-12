@@ -54,9 +54,14 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    // Making the accept prop extremely permissive to test Android compatibility
     accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp', '.heic'], // Broaden image acceptance
-      'application/pdf': ['.pdf'],
+      'image/*': [], // Accept all image types
+      'application/pdf': [], // Accept all PDF types
+      'application/octet-stream': [], // Generic binary data, common fallback for unknown types
+      'video/*': [], // Just in case "photos and videos" returns a video
+      'text/plain': [], // Just in case
+      '*/*': [], // The ultimate fallback: accept anything
     },
     multiple: true,
   });
