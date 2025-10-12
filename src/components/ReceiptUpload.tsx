@@ -44,6 +44,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [connectingQuickBooks, setConnectingQuickBooks] = useState(false);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    console.log("onDrop called. Accepted files:", acceptedFiles); // Diagnostic log
     const newFiles: UploadedFile[] = acceptedFiles.map(file =>
       Object.assign(file, {
         id: uuidv4(), // Assign a unique ID
@@ -54,14 +55,9 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    // Making the accept prop extremely permissive to test Android compatibility
     accept: {
-      'image/*': [], // Accept all image types
-      'application/pdf': [], // Accept all PDF types
-      'application/octet-stream': [], // Generic binary data, common fallback for unknown types
-      'video/*': [], // Just in case "photos and videos" returns a video
-      'text/plain': [], // Just in case
-      '*/*': [], // The ultimate fallback: accept anything
+      'image/*': ['.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'], // Accept common image types
+      'application/pdf': ['.pdf'], // Accept PDF files
     },
     multiple: true,
   });
