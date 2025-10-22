@@ -1,13 +1,7 @@
 import { serve } from "https://deno.land/std@0.200.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import OpenAI from "npm:openai";
-// import { corsHeaders } from "../_shared/cors.ts"; // Removed problematic import
-
-// Inlined corsHeaders to fix deployment issue
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 // Define the valid subcategories for validation
 const validSubcategories = [
