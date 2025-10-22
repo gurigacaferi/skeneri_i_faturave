@@ -110,6 +110,10 @@ Each object in the array must have the following fields:
 - "merchant": (string or null) The name of the merchant.
 - "vat_code": (string) MUST be one of: ${validVatCodes.join(", ")}.
 - "tvsh_percentage": (number) Must be 0, 8, or 18 based on the VAT.
+- "nui": (string or null) The unique identification number (NUI) of the merchant.
+- "nr_fiskal": (string or null) The fiscal number (Nr. Fiskal) of the receipt.
+- "numri_i_tvsh_se": (string or null) The VAT number (Numri i TVSH-se) of the merchant.
+- "description": (string or null) A detailed description of the expense item.
 
 If any information is missing from the receipt, use a reasonable default or null.
 
@@ -123,7 +127,11 @@ Example of a valid response:
       "date": "2024-07-15",
       "merchant": "Kafe Bar",
       "vat_code": "[45] Blerjet vendore 8%",
-      "tvsh_percentage": 8
+      "tvsh_percentage": 8,
+      "nui": "810000000",
+      "nr_fiskal": "123456789",
+      "numri_i_tvsh_se": "600000000",
+      "description": "Morning coffee purchase"
     }
   ]
 }
@@ -229,6 +237,10 @@ Example of a valid response:
         merchant: expense.merchant || null,
         vat_code: vatCode,
         tvsh_percentage: tvshPercentage,
+        nui: expense.nui || null, // New field
+        nr_fiskal: expense.nr_fiskal || null, // New field
+        numri_i_tvsh_se: expense.numri_i_tvsh_se || null, // New field
+        description: expense.description || null, // New field
       };
     });
 

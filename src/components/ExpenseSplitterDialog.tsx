@@ -31,6 +31,10 @@ interface ExpenseItem {
   merchant: string | null;
   tvsh_percentage: number;
   vat_code: string;
+  nui: string | null; // New field
+  nr_fiskal: string | null; // New field
+  numri_i_tvsh_se: string | null; // New field
+  description: string | null; // New field
 }
 
 interface InitialExpenseData {
@@ -43,6 +47,10 @@ interface InitialExpenseData {
     merchant: string | null;
     tvsh_percentage: number;
     vat_code: string;
+    nui: string | null; // New field
+    nr_fiskal: string | null; // New field
+    numri_i_tvsh_se: string | null; // New field
+    description: string | null; // New field
   };
 }
 
@@ -89,7 +97,19 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   useEffect(() => {
     if (open && initialExpenses) {
       const parsedExpenses: ExpenseItem[] = initialExpenses.map((data) => ({
-        tempId: uuidv4(), receiptId: data.receiptId, name: data.expense.name, category: data.expense.category, amount: parseFloat(data.expense.amount.toFixed(2)), date: data.expense.date ? parseISO(data.expense.date) : new Date(), merchant: data.expense.merchant, vat_code: data.expense.vat_code || 'No VAT', tvsh_percentage: getPercentageFromVatCode(data.expense.vat_code || 'No VAT'),
+        tempId: uuidv4(),
+        receiptId: data.receiptId,
+        name: data.expense.name,
+        category: data.expense.category,
+        amount: parseFloat(data.expense.amount.toFixed(2)),
+        date: data.expense.date ? parseISO(data.expense.date) : new Date(),
+        merchant: data.expense.merchant,
+        vat_code: data.expense.vat_code || 'No VAT',
+        tvsh_percentage: getPercentageFromVatCode(data.expense.vat_code || 'No VAT'),
+        nui: data.expense.nui, // Initialize new field
+        nr_fiskal: data.expense.nr_fiskal, // Initialize new field
+        numri_i_tvsh_se: data.expense.numri_i_tvsh_se, // Initialize new field
+        description: data.expense.description, // Initialize new field
       }));
       setExpenses(parsedExpenses.length > 0 ? parsedExpenses : [createNewEmptyExpense()]);
     } else if (open && !initialExpenses) {
@@ -98,7 +118,19 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   }, [open, initialExpenses]);
 
   const createNewEmptyExpense = (baseExpense?: Partial<ExpenseItem>): ExpenseItem => ({
-    tempId: uuidv4(), receiptId: baseExpense?.receiptId || 'unknown', name: baseExpense?.name || '', category: baseExpense?.category || allSubcategories[0] || '', amount: baseExpense?.amount || 0, date: baseExpense?.date || new Date(), merchant: baseExpense?.merchant || null, vat_code: baseExpense?.vat_code || 'No VAT', tvsh_percentage: getPercentageFromVatCode(baseExpense?.vat_code || 'No VAT'),
+    tempId: uuidv4(),
+    receiptId: baseExpense?.receiptId || 'unknown',
+    name: baseExpense?.name || '',
+    category: baseExpense?.category || allSubcategories[0] || '',
+    amount: baseExpense?.amount || 0,
+    date: baseExpense?.date || new Date(),
+    merchant: baseExpense?.merchant || null,
+    vat_code: baseExpense?.vat_code || 'No VAT',
+    tvsh_percentage: getPercentageFromVatCode(baseExpense?.vat_code || 'No VAT'),
+    nui: baseExpense?.nui || null, // Default new field
+    nr_fiskal: baseExpense?.nr_fiskal || null, // Default new field
+    numri_i_tvsh_se: baseExpense?.numri_i_tvsh_se || null, // Default new field
+    description: baseExpense?.description || null, // Default new field
   });
 
   const handleAddExpense = () => setExpenses((prev) => [...prev, createNewEmptyExpense()]);
@@ -149,7 +181,20 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
     try {
       const expensesToInsert = expenses.map((exp) => ({
-        user_id: session.user.id, receipt_id: exp.receiptId, batch_id: batchId, name: exp.name.trim(), category: exp.category, amount: exp.amount, date: format(exp.date, 'yyyy-MM-dd'), merchant: exp.merchant?.trim() || null, vat_code: exp.vat_code, tvsh_percentage: exp.tvsh_percentage,
+        user_id: session.user.id,
+        receipt_id: exp.receiptId,
+        batch_id: batchId,
+        name: exp.name.trim(),
+        category: exp.category,
+        amount: exp.amount,
+        date: format(exp.date, 'yyyy-MM-dd'),
+        merchant: exp.merchant?.trim() || null,
+        vat_code: exp.vat_code,
+        tvsh_percentage: exp.tvsh_percentage,
+        nui: exp.nui, // Insert new field
+        nr_fiskal: exp.nr_fiskal, // Insert new field
+        numri_i_tvsh_se: exp.numri_i_tvsh_se, // Insert new field
+        description: exp.description, // Insert new field
       }));
 
       const { data: insertedExpenses, error: expensesError } = await supabase
@@ -194,7 +239,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto"> {/* Increased max-width */}
         <DialogHeader>
           <DialogTitle>Review and Split Expenses</DialogTitle>
           <DialogDescription>
@@ -207,6 +252,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
               <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
                 Expense #{index + 1}
               </div>
+              
+              {/* Row 1: Name, Category, Amount, VAT Code */}
               <div className="col-span-6 md:col-span-3">
                 <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
                 <Input id={`name-${exp.tempId}`} value={exp.name} onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)} disabled={loading} />
@@ -250,11 +297,30 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
                   </PopoverContent>
                 </Popover>
               </div>
-              <div className="col-span-6 md:col-span-3">
+
+              {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se, Description, Actions */}
+              <div className="col-span-6 md:col-span-2">
                 <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
                 <Input id={`merchant-${exp.tempId}`} value={exp.merchant || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)} disabled={loading} />
               </div>
-              <div className="col-span-12 md:col-span-3 flex items-end justify-end space-x-2 mt-4 md:mt-0">
+              <div className="col-span-6 md:col-span-2">
+                <Label htmlFor={`nui-${exp.tempId}`}>NUI</Label>
+                <Input id={`nui-${exp.tempId}`} value={exp.nui || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'nui', e.target.value || null)} disabled={loading} />
+              </div>
+              <div className="col-span-6 md:col-span-2">
+                <Label htmlFor={`nr_fiskal-${exp.tempId}`}>Nr. Fiskal</Label>
+                <Input id={`nr_fiskal-${exp.tempId}`} value={exp.nr_fiskal || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'nr_fiskal', e.target.value || null)} disabled={loading} />
+              </div>
+              <div className="col-span-6 md:col-span-2">
+                <Label htmlFor={`numri_i_tvsh_se-${exp.tempId}`}>Numri i TVSH-se</Label>
+                <Input id={`numri_i_tvsh_se-${exp.tempId}`} value={exp.numri_i_tvsh_se || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'numri_i_tvsh_se', e.target.value || null)} disabled={loading} />
+              </div>
+              <div className="col-span-6 md:col-span-2">
+                <Label htmlFor={`description-${exp.tempId}`}>Description</Label>
+                <Input id={`description-${exp.tempId}`} value={exp.description || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'description', e.target.value || null)} disabled={loading} />
+              </div>
+
+              <div className="col-span-12 md:col-span-2 flex items-end justify-end space-x-2 mt-4 md:mt-0">
                 <Button variant="outline" size="icon" onClick={() => handleSplitExpense(exp.tempId)} disabled={loading} title="Split Expense"><Split className="h-4 w-4" /></Button>
                 <Button variant="destructive" size="icon" onClick={() => handleDeleteExpense(exp.tempId)} disabled={loading} title="Delete Expense"><Trash2 className="h-4 w-4" /></Button>
               </div>

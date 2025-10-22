@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Filter, Download } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download, Settings } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -28,9 +28,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import EditExpenseDialog from './EditExpenseDialog';
 import { DateRangeFilter } from './DateRangeFilter';
-import { exportExpensesToCsv } from '@/utils/exportToCsv';
+import { exportExpensesToCsv, DEFAULT_EXPORT_COLUMNS } from '@/utils/exportToCsv';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
+import { Checkbox } from '@/components/ui/checkbox';
+import ExportSettingsModal from './ExportSettingsModal'; // Import the new modal
 
 interface Expense {
   id: string;
@@ -42,6 +43,10 @@ interface Expense {
   tvsh_percentage: number;
   vat_code: string | null;
   created_at: string;
+  nui: string | null; // Added new fields
+  nr_fiskal: string | null; // Added new fields
+  numri_i_tvsh_se: string | null; // Added new fields
+  description: string | null; // Added new fields
 }
 
 interface ExpensesListProps {
@@ -49,11 +54,12 @@ interface ExpensesListProps {
 }
 
 const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
-  const { supabase, session } = useSession();
+  const { supabase, session, profile, refreshProfile } = useSession();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // State for settings modal
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   
@@ -75,6 +81,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const debouncedMaxAmount = useDebounce(maxAmount, 500);
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
+  // Determine which columns to fetch from the database
+  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description';
+
   // Effect for fetching data, now depends on debounced values
   useEffect(() => {
     const fetchExpenses = async () => {
@@ -83,7 +92,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
       setLoading(true);
       let query = supabase
         .from('expenses')
-        .select('id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at')
+        .select(selectColumns)
         .eq('user_id', session.user.id);
 
       // Apply filters using debounced values
@@ -156,6 +165,13 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     setIsEditDialogOpen(true);
   };
 
+  // Get the user's preferred columns, or use the default list
+  const getExportColumns = () => {
+    return profile?.csv_export_columns && profile.csv_export_columns.length > 0
+      ? profile.csv_export_columns
+      : DEFAULT_EXPORT_COLUMNS;
+  };
+
   const handleExportFilteredExpenses = () => {
     if (expenses.length === 0) {
       showError('No expenses to export with current filters.');
@@ -163,7 +179,10 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     }
     setIsExporting(true);
     const fileName = `Filtered_Expenses_${dateRange.label.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}`;
-    exportExpensesToCsv(expenses, fileName);
+    
+    const columns = getExportColumns();
+    exportExpensesToCsv(expenses, fileName, columns);
+    
     showSuccess('Filtered expenses exported successfully!');
     setIsExporting(false);
   };
@@ -198,7 +217,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     const selectedExpenses = expenses.filter(exp => selectedExpenseIds.has(exp.id));
     const fileName = `Selected_Expenses_${format(new Date(), 'yyyyMMdd_HHmmss')}`;
     
-    exportExpensesToCsv(selectedExpenses, fileName);
+    const columns = getExportColumns();
+    exportExpensesToCsv(selectedExpenses, fileName, columns);
+    
     showSuccess(`${selectedExpenses.length} expenses exported successfully!`);
     setIsExporting(false);
   };
@@ -207,179 +228,193 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const isIndeterminate = selectedExpenseIds.size > 0 && selectedExpenseIds.size < expenses.length;
 
   return (
-    <Card className="w-full max-w-5xl mx-auto shadow-lg shadow-black/5 border-0">
-      <CardHeader>
-        <CardTitle className="text-2xl">Your Expenses</CardTitle>
-        <CardDescription>A list of all your tracked expenses.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg bg-secondary/30">
-          <div className="col-span-full flex items-center gap-2 text-lg font-semibold text-foreground/80">
-            <Filter className="h-5 w-5" /> Filters
-          </div>
-          <div className="col-span-full sm:col-span-2 md:col-span-1">
-            <Label htmlFor="date-filter">Date Range</Label>
-            <DateRangeFilter onDateRangeChange={setDateRange} initialRange={dateRange} />
-          </div>
-          <div className="col-span-full sm:col-span-2 md:col-span-1">
-            <Label htmlFor="min-amount">Min Amount</Label>
-            <Input
-              id="min-amount"
-              type="number"
-              step="0.01"
-              value={minAmount}
-              onChange={(e) => setMinAmount(e.target.value)}
-              placeholder="e.g., 10.00"
-            />
-          </div>
-          <div className="col-span-full sm:col-span-2 md:col-span-1">
-            <Label htmlFor="max-amount">Max Amount</Label>
-            <Input
-              id="max-amount"
-              type="number"
-              step="0.01"
-              value={maxAmount}
-              onChange={(e) => setMaxAmount(e.target.value)}
-              placeholder="e.g., 100.00"
-            />
-          </div>
-          <div className="col-span-full sm:col-span-2 md:col-span-1">
-            <Label htmlFor="search-term">Search</Label>
-            <Input
-              id="search-term"
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Name, merchant, category..."
-            />
-          </div>
-          <div className="col-span-full flex justify-end gap-2 mt-2">
-            <Button variant="outline" onClick={handleClearFilters}>
-              Clear Filters
-            </Button>
-            <Button 
-              onClick={handleExportSelectedExpenses} 
-              disabled={isExporting || selectedExpenseIds.size === 0}
-              variant="default"
-            >
-              {isExporting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</>
-              ) : (
-                <><Download className="mr-2 h-4 w-4" /> Export Selected ({selectedExpenseIds.size})</>
-              )}
-            </Button>
-            <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0} variant="secondary">
-              <Download className="mr-2 h-4 w-4" /> Export All Filtered
+    <>
+      <Card className="w-full max-w-5xl mx-auto shadow-lg shadow-black/5 border-0">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle className="text-2xl">Your Expenses</CardTitle>
+              <CardDescription>A list of all your tracked expenses.</CardDescription>
+            </div>
+            <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)} title="Export Settings">
+              <Settings className="h-5 w-5" />
             </Button>
           </div>
-        </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 border rounded-lg bg-secondary/30">
+            <div className="col-span-full flex items-center gap-2 text-lg font-semibold text-foreground/80">
+              <Filter className="h-5 w-5" /> Filters
+            </div>
+            <div className="col-span-full sm:col-span-2 md:col-span-1">
+              <Label htmlFor="date-filter">Date Range</Label>
+              <DateRangeFilter onDateRangeChange={setDateRange} initialRange={dateRange} />
+            </div>
+            <div className="col-span-full sm:col-span-2 md:col-span-1">
+              <Label htmlFor="min-amount">Min Amount</Label>
+              <Input
+                id="min-amount"
+                type="number"
+                step="0.01"
+                value={minAmount}
+                onChange={(e) => setMinAmount(e.target.value)}
+                placeholder="e.g., 10.00"
+              />
+            </div>
+            <div className="col-span-full sm:col-span-2 md:col-span-1">
+              <Label htmlFor="max-amount">Max Amount</Label>
+              <Input
+                id="max-amount"
+                type="number"
+                step="0.01"
+                value={maxAmount}
+                onChange={(e) => setMaxAmount(e.target.value)}
+                placeholder="e.g., 100.00"
+              />
+            </div>
+            <div className="col-span-full sm:col-span-2 md:col-span-1">
+              <Label htmlFor="search-term">Search</Label>
+              <Input
+                id="search-term"
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Name, merchant, category..."
+              />
+            </div>
+            <div className="col-span-full flex justify-end gap-2 mt-2">
+              <Button variant="outline" onClick={handleClearFilters}>
+                Clear Filters
+              </Button>
+              <Button 
+                onClick={handleExportSelectedExpenses} 
+                disabled={isExporting || selectedExpenseIds.size === 0}
+                variant="default"
+              >
+                {isExporting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</>
+                ) : (
+                  <><Download className="mr-2 h-4 w-4" /> Export Selected ({selectedExpenseIds.size})</>
+                )}
+              </Button>
+              <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0} variant="secondary">
+                <Download className="mr-2 h-4 w-4" /> Export All Filtered
+              </Button>
+            </div>
+          </div>
 
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : expenses.length === 0 ? (
-          <div className="text-center py-12 text-foreground/60">
-            <p>No expenses recorded yet or no expenses match your current filters.</p>
-            <p className="text-sm">Try adjusting your filters or upload a receipt to get started!</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-secondary/50 hover:bg-secondary/50">
-                  <TableHead className="py-3 px-4 w-[50px] text-center">
-                    <Checkbox
-                      checked={isAllSelected}
-                      onCheckedChange={handleToggleSelectAll}
-                      aria-label="Select all"
-                      className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''}
-                    />
-                  </TableHead>
-                  <TableHead className="py-3 px-4">Date</TableHead>
-                  <TableHead className="py-3 px-4">Merchant</TableHead>
-                  <TableHead className="py-3 px-4">Item</TableHead>
-                  <TableHead className="py-3 px-4">Category</TableHead>
-                  <TableHead className="text-right py-3 px-4">Amount</TableHead>
-                  <TableHead className="text-right py-3 px-4">VAT Code</TableHead>
-                  <TableHead className="text-center py-3 px-4">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="[&_tr:last-child]:border-0">
-                {expenses.map((expense, index) => (
-                  <TableRow key={expense.id} className={`transition-colors hover:bg-accent ${index % 2 !== 0 ? 'bg-secondary/30' : 'bg-transparent'}`}>
-                    <TableCell className="py-3 px-4 w-[50px] text-center">
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : expenses.length === 0 ? (
+            <div className="text-center py-12 text-foreground/60">
+              <p>No expenses recorded yet or no expenses match your current filters.</p>
+              <p className="text-sm">Try adjusting your filters or upload a receipt to get started!</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-secondary/50 hover:bg-secondary/50">
+                    <TableHead className="py-3 px-4 w-[50px] text-center">
                       <Checkbox
-                        checked={selectedExpenseIds.has(expense.id)}
-                        onCheckedChange={() => handleToggleSelect(expense.id)}
-                        aria-label={`Select expense ${expense.name}`}
+                        checked={isAllSelected}
+                        onCheckedChange={handleToggleSelectAll}
+                        aria-label="Select all"
+                        className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''}
                       />
-                    </TableCell>
-                    <TableCell className="py-3 px-4">{format(new Date(expense.date), 'MMM dd, yyyy')}</TableCell>
-                    <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
-                    <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
-                    <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
-                    <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
-                    <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
-                    <TableCell className="py-3 px-4">
-                      <div className="flex items-center justify-center space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-foreground/60 hover:text-primary hover:bg-accent"
-                          onClick={() => handleEditClick(expense)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the expense "{expense.name}".
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteExpense(expense.id)}
-                                disabled={deletingId === expense.id}
-                                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                              >
-                                {deletingId === expense.id ? (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                  'Delete'
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
+                    </TableHead>
+                    <TableHead className="py-3 px-4">Date</TableHead>
+                    <TableHead className="py-3 px-4">Merchant</TableHead>
+                    <TableHead className="py-3 px-4">Item</TableHead>
+                    <TableHead className="py-3 px-4">Category</TableHead>
+                    <TableHead className="text-right py-3 px-4">Amount</TableHead>
+                    <TableHead className="text-right py-3 px-4">VAT Code</TableHead>
+                    <TableHead className="text-center py-3 px-4">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody className="[&_tr:last-child]:border-0">
+                  {expenses.map((expense, index) => (
+                    <TableRow key={expense.id} className={`transition-colors hover:bg-accent ${index % 2 !== 0 ? 'bg-secondary/30' : 'bg-transparent'}`}>
+                      <TableCell className="py-3 px-4 w-[50px] text-center">
+                        <Checkbox
+                          checked={selectedExpenseIds.has(expense.id)}
+                          onCheckedChange={() => handleToggleSelect(expense.id)}
+                          aria-label={`Select expense ${expense.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="py-3 px-4">{format(new Date(expense.date), 'MMM dd, yyyy')}</TableCell>
+                      <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
+                      <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
+                      <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
+                      <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
+                      <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
+                      <TableCell className="py-3 px-4">
+                        <div className="flex items-center justify-center space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-foreground/60 hover:text-primary hover:bg-accent"
+                            onClick={() => handleEditClick(expense)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will permanently delete the expense "{expense.name}".
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  disabled={deletingId === expense.id}
+                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                >
+                                  {deletingId === expense.id ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    'Delete'
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+        {currentExpenseToEdit && (
+          <EditExpenseDialog
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
+            expense={currentExpenseToEdit}
+            onExpenseUpdated={() => {
+              // No need to call fetchExpenses here, the refreshTrigger will handle it
+            }}
+          />
         )}
-      </CardContent>
-      {currentExpenseToEdit && (
-        <EditExpenseDialog
-          open={isEditDialogOpen}
-          onOpenChange={setIsEditDialogOpen}
-          expense={currentExpenseToEdit}
-          onExpenseUpdated={() => {
-            // No need to call fetchExpenses here, the refreshTrigger will handle it
-          }}
-        />
-      )}
-    </Card>
+      </Card>
+      <ExportSettingsModal
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        onSettingsSaved={refreshProfile} // Refresh profile to get new settings immediately
+      />
+    </>
   );
 };
 
