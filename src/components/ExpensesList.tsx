@@ -248,6 +248,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     exportExpensesToCsv(exportableSelectedExpenses, fileName, columns);
     
     showSuccess(`${exportableSelectedExpenses.length} expenses exported successfully!`);
+    setSelectedExpenseIds(new Set()); // Clear selection after export
     setIsExporting(false);
   };
 
@@ -348,7 +349,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                     <TableHead className="py-3 px-4 w-[50px] text-center">
                       <Checkbox
                         checked={isAllSelected}
-                        onCheckedChange={handleToggleSelectAll}
+                        onCheckedChange={() => handleToggleSelectAll()} {/* FIX APPLIED HERE */}
                         aria-label="Select all exportable"
                         className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''}
                         disabled={exportableExpensesCount === 0}
