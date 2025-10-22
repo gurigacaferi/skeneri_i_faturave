@@ -85,12 +85,22 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
     });
 
     // 2. Check initial session status immediately
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      // Only set initial state if the listener hasn't already done it
-      if (loading) {
-        handleSession(initialSession);
+    const checkInitialSession = async () => {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        // Only set initial state if the listener hasn't already done it
+        if (loading) {
+          handleSession(initialSession);
+        }
+      } catch (error) {
+        console.error("Error checking initial session:", error);
+        showError("Failed to connect to authentication service.");
+        // Crucially, set loading to false even on failure to unblock the UI
+        setLoading(false); 
       }
-    });
+    };
+
+    checkInitialSession();
 
     return () => subscription.unsubscribe();
   }, []); // Empty dependency array ensures this runs only once
