@@ -60,7 +60,7 @@ interface ExpenseSplitterDialogProps {
   initialExpenses: InitialExpenseData[] | null;
   batchId: string | null;
   onExpensesSaved: () => void;
-  isConnectedToQuickBooks: boolean;
+  isConnectedToQuickBooks: boolean; // Kept for compatibility but ignored
 }
 
 const expenseCategories = {
@@ -88,7 +88,7 @@ const getPercentageFromVatCode = (vatCode: string): number => {
 };
 
 const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
-  open, onOpenChange, initialExpenses, batchId, onExpensesSaved, isConnectedToQuickBooks
+  open, onOpenChange, initialExpenses, batchId, onExpensesSaved,
 }) => {
   const { supabase, session } = useSession();
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
@@ -212,20 +212,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
       dismissToast(toastId);
       showSuccess('Expenses saved successfully!');
 
-      if (isConnectedToQuickBooks && insertedExpenses) {
-        const qbToastId = showLoading('Sending to QuickBooks...');
-        try {
-          const { error: qbError } = await supabase.functions.invoke('send-expenses-to-quickbooks', {
-            body: { expenses: insertedExpenses },
-          });
-          if (qbError) throw new Error(qbError.message);
-          dismissToast(qbToastId);
-          showSuccess('Successfully sent to QuickBooks!');
-        } catch (error: any) {
-          dismissToast(qbToastId);
-          showError('Could not send to QuickBooks: ' + error.message);
-        }
-      }
+      // Removed QuickBooks integration logic here
 
       onExpensesSaved();
       onOpenChange(false);

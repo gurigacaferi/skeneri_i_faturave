@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { useSession } from '@/components/SessionContextProvider';
-import { Loader2, UploadCloud, CheckCircle2, Link, FileText, X, Image, File as FileIcon } from 'lucide-react';
+import { Loader2, UploadCloud, X, Image, File as FileIcon } from 'lucide-react';
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -40,8 +40,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>(null);
 
-  const [isConnectedToQuickBooks, setIsConnectedToQuickBooks] = useState(false);
-  const [connectingQuickBooks, setConnectingQuickBooks] = useState(false);
+  // Removed QuickBooks state and connection check logic
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { id: uuidv4() }));
@@ -66,20 +65,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     if (fileType === 'application/pdf') return <FileIcon className="h-5 w-5 text-red-500" />;
     return <FileText className="h-5 w-5 text-gray-500" />;
   };
-
-  const checkQuickBooksConnection = useCallback(async () => {
-    if (!session) return;
-    const { data } = await supabase
-      .from('quickbooks_integrations')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .single();
-    setIsConnectedToQuickBooks(!!data);
-  }, [session, supabase]);
-
-  useEffect(() => {
-    checkQuickBooksConnection();
-  }, [checkQuickBooksConnection]);
 
   const handleFileUpload = async () => {
     if (files.length === 0) { showError('Please select at least one file.'); return; }
@@ -132,22 +117,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     onReceiptProcessed();
   };
 
-  const handleConnectQuickBooks = async () => {
-    if (!session) return;
-    setConnectingQuickBooks(true);
-    const toastId = showLoading('Initiating QuickBooks connection...');
-    try {
-      const { data, error } = await supabase.functions.invoke('quickbooks-oauth/initiate');
-      if (error) throw new Error(error.message);
-      window.location.href = data.authorizeUrl;
-    } catch (error: any) {
-      showError('Failed to connect to QuickBooks: ' + error.message);
-    } finally {
-      dismissToast(toastId);
-      setConnectingQuickBooks(false);
-    }
-  };
-
   return (
     <>
       <Card className="w-full max-w-3xl mx-auto shadow-lg shadow-black/5 border-0">
@@ -184,12 +153,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           </Button>
           {!selectedBatchId && (<p className="text-sm text-destructive mt-2 text-center">Please select or create an expense batch.</p>)}
 
-          <div className="mt-8 pt-6 border-t">
-            <Button onClick={handleConnectQuickBooks} variant={isConnectedToQuickBooks ? 'secondary' : 'outline'} disabled={connectingQuickBooks} className="w-full">
-              {connectingQuickBooks ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : isConnectedToQuickBooks ? <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> : <Link className="mr-2 h-4 w-4" />}
-              {isConnectedToQuickBooks ? 'QuickBooks Connected' : 'Connect to QuickBooks'}
-            </Button>
-          </div>
+          {/* Removed QuickBooks connection section */}
         </CardContent>
       </Card>
 
@@ -199,7 +163,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         initialExpenses={allExtractedExpensesForDialog}
         batchId={selectedBatchId}
         onExpensesSaved={handleExpensesSaved}
-        isConnectedToQuickBooks={isConnectedToQuickBooks}
+        isConnectedToQuickBooks={false} // Hardcode to false since integration is removed
       />
     </>
   );
