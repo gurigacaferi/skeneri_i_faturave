@@ -76,6 +76,7 @@ const expenseCategories = {
 };
 
 const allSubcategories = Object.values(expenseCategories).flat();
+const UNCATEGORIZED_PLACEHOLDER = "UNCATEGORIZED"; // Define the placeholder
 
 const vatCodes = [
   "[31] Blerjet dhe importet pa TVSH", "[32] Blerjet dhe importet investive pa TVSH", "[33] Blerjet dhe importet me TVSH jo të zbritshme", "[34] Blerjet dhe importet investive me TVSH jo të zbritshme", "[35] Importet 18%", "[37] Importet 8%", "[39] Importet investive 18%", "[41] Importet investive 8%", "[43] Blerjet vendore 18%", "No VAT", "[45] Blerjet vendore 8%", "[47] Blerjet investive vendore 18%", "[49] Blerjet investive vendore 8%", "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%", "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
@@ -94,6 +95,22 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const createNewEmptyExpense = (baseExpense?: Partial<ExpenseItem>): ExpenseItem => ({
+    tempId: uuidv4(),
+    receiptId: baseExpense?.receiptId || 'unknown',
+    name: baseExpense?.name || '',
+    category: baseExpense?.category || UNCATEGORIZED_PLACEHOLDER, // Use placeholder for default
+    amount: baseExpense?.amount || 0,
+    date: baseExpense?.date || new Date(),
+    merchant: baseExpense?.merchant || null,
+    vat_code: baseExpense?.vat_code || 'No VAT',
+    tvsh_percentage: getPercentageFromVatCode(baseExpense?.vat_code || 'No VAT'),
+    nui: baseExpense?.nui || null,
+    nr_fiskal: baseExpense?.nr_fiskal || null,
+    numri_i_tvsh_se: baseExpense?.numri_i_tvsh_se || null,
+    description: baseExpense?.description || null,
+  });
+
   useEffect(() => {
     if (open && initialExpenses) {
       const parsedExpenses: ExpenseItem[] = initialExpenses.map((data) => ({
@@ -106,32 +123,16 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         merchant: data.expense.merchant,
         vat_code: data.expense.vat_code || 'No VAT',
         tvsh_percentage: getPercentageFromVatCode(data.expense.vat_code || 'No VAT'),
-        nui: data.expense.nui, // Initialize new field
-        nr_fiskal: data.expense.nr_fiskal, // Initialize new field
-        numri_i_tvsh_se: data.expense.numri_i_tvsh_se, // Initialize new field
-        description: data.expense.description, // Initialize new field
+        nui: data.expense.nui,
+        nr_fiskal: data.expense.nr_fiskal,
+        numri_i_tvsh_se: data.expense.numri_i_tvsh_se,
+        description: data.expense.description,
       }));
       setExpenses(parsedExpenses.length > 0 ? parsedExpenses : [createNewEmptyExpense()]);
     } else if (open && !initialExpenses) {
       setExpenses([createNewEmptyExpense()]);
     }
   }, [open, initialExpenses]);
-
-  const createNewEmptyExpense = (baseExpense?: Partial<ExpenseItem>): ExpenseItem => ({
-    tempId: uuidv4(),
-    receiptId: baseExpense?.receiptId || 'unknown',
-    name: baseExpense?.name || '',
-    category: baseExpense?.category || allSubcategories[0] || '',
-    amount: baseExpense?.amount || 0,
-    date: baseExpense?.date || new Date(),
-    merchant: baseExpense?.merchant || null,
-    vat_code: baseExpense?.vat_code || 'No VAT',
-    tvsh_percentage: getPercentageFromVatCode(baseExpense?.vat_code || 'No VAT'),
-    nui: baseExpense?.nui || null, // Default new field
-    nr_fiskal: baseExpense?.nr_fiskal || null, // Default new field
-    numri_i_tvsh_se: baseExpense?.numri_i_tvsh_se || null, // Default new field
-    description: baseExpense?.description || null, // Default new field
-  });
 
   const handleAddExpense = () => setExpenses((prev) => [...prev, createNewEmptyExpense()]);
 
@@ -163,7 +164,11 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   const validateExpenses = (): boolean => {
     for (const exp of expenses) {
       if (!exp.name.trim()) { showError(`Expense name is required.`); return false; }
-      if (!exp.category || !allSubcategories.includes(exp.category)) { showError(`A valid category is required.`); return false; }
+      // Validation check: Category must be a valid subcategory OR the placeholder
+      if (!exp.category || (!allSubcategories.includes(exp.category) && exp.category !== UNCATEGORIZED_PLACEHOLDER)) { 
+        showError(`A valid category is required.`); 
+        return false; 
+      }
       if (exp.amount <= 0) { showError(`Amount must be greater than 0.`); return false; }
     }
     return true;
@@ -191,10 +196,10 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         merchant: exp.merchant?.trim() || null,
         vat_code: exp.vat_code,
         tvsh_percentage: exp.tvsh_percentage,
-        nui: exp.nui, // Insert new field
-        nr_fiskal: exp.nr_fiskal, // Insert new field
-        numri_i_tvsh_se: exp.numri_i_tvsh_se, // Insert new field
-        description: exp.description, // Insert new field
+        nui: exp.nui,
+        nr_fiskal: exp.nr_fiskal,
+        numri_i_tvsh_se: exp.numri_i_tvsh_se,
+        description: exp.description,
       }));
 
       const { data: insertedExpenses, error: expensesError } = await supabase
@@ -212,6 +217,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
       dismissToast(toastId);
       showSuccess('Expenses saved successfully!');
 
+      // Quickbooks integration logic remains the same, it will send all saved expenses
       if (isConnectedToQuickBooks && insertedExpenses) {
         const qbToastId = showLoading('Sending to QuickBooks...');
         try {
@@ -261,8 +267,15 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
               <div className="col-span-6 md:col-span-3">
                 <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
                 <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)} value={exp.category} disabled={loading}>
-                  <SelectTrigger id={`category-${exp.tempId}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
+                  <SelectTrigger id={`category-${exp.tempId}`} className={exp.category === UNCATEGORIZED_PLACEHOLDER ? 'border-destructive ring-destructive' : ''}>
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
                   <SelectContent>
+                    {exp.category === UNCATEGORIZED_PLACEHOLDER && (
+                      <SelectItem value={UNCATEGORIZED_PLACEHOLDER} className="text-destructive font-bold">
+                        {UNCATEGORIZED_PLACEHOLDER} (REQUIRED)
+                      </SelectItem>
+                    )}
                     {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
                       <SelectGroup key={mainCategory}>
                         <SelectLabel>{mainCategory}</SelectLabel>

@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Filter, Download, Settings } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download, Settings, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -52,6 +52,8 @@ interface Expense {
 interface ExpensesListProps {
   refreshTrigger: number;
 }
+
+const UNCATEGORIZED_PLACEHOLDER = "UNCATEGORIZED";
 
 const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const { supabase, session, profile, refreshProfile } = useSession();
@@ -165,6 +167,11 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     setIsEditDialogOpen(true);
   };
 
+  // Filter expenses to exclude uncategorized ones before export
+  const getExportableExpenses = (expenseList: Expense[]) => {
+    return expenseList.filter(exp => exp.category !== UNCATEGORIZED_PLACEHOLDER);
+  };
+
   // Get the user's preferred columns, or use the default list
   const getExportColumns = () => {
     return profile?.csv_export_columns && profile.csv_export_columns.length > 0
@@ -173,15 +180,17 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   };
 
   const handleExportFilteredExpenses = () => {
-    if (expenses.length === 0) {
-      showError('No expenses to export with current filters.');
+    const exportableExpenses = getExportableExpenses(expenses);
+    
+    if (exportableExpenses.length === 0) {
+      showError('No exportable expenses match current filters. Ensure all expenses have a valid category.');
       return;
     }
     setIsExporting(true);
     const fileName = `Filtered_Expenses_${dateRange.label.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}`;
     
     const columns = getExportColumns();
-    exportExpensesToCsv(expenses, fileName, columns);
+    exportExpensesToCsv(exportableExpenses, fileName, columns);
     
     showSuccess('Filtered expenses exported successfully!');
     setIsExporting(false);
@@ -193,17 +202,26 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
       if (newSet.has(expenseId)) {
         newSet.delete(expenseId);
       } else {
-        newSet.add(expenseId);
+        // Only allow selection if the expense is exportable
+        const expense = expenses.find(exp => exp.id === expenseId);
+        if (expense && expense.category !== UNCATEGORIZED_PLACEHOLDER) {
+          newSet.add(expenseId);
+        } else {
+          showError("Cannot select uncategorized expenses for export.");
+        }
       }
       return newSet;
     });
   };
 
   const handleToggleSelectAll = () => {
-    if (selectedExpenseIds.size === expenses.length) {
+    const exportableExpenses = getExportableExpenses(expenses);
+    const exportableIds = exportableExpenses.map(exp => exp.id);
+
+    if (selectedExpenseIds.size === exportableIds.length) {
       setSelectedExpenseIds(new Set());
     } else {
-      setSelectedExpenseIds(new Set(expenses.map(exp => exp.id)));
+      setSelectedExpenseIds(new Set(exportableIds));
     }
   };
 
@@ -214,18 +232,28 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     }
 
     setIsExporting(true);
+    // Filter the full list by selected IDs, then ensure they are exportable (though selection logic should handle this)
     const selectedExpenses = expenses.filter(exp => selectedExpenseIds.has(exp.id));
+    const exportableSelectedExpenses = getExportableExpenses(selectedExpenses);
+
+    if (exportableSelectedExpenses.length === 0) {
+      showError('Selected expenses are not exportable. Ensure all selected items have a valid category.');
+      setIsExporting(false);
+      return;
+    }
+
     const fileName = `Selected_Expenses_${format(new Date(), 'yyyyMMdd_HHmmss')}`;
     
     const columns = getExportColumns();
-    exportExpensesToCsv(selectedExpenses, fileName, columns);
+    exportExpensesToCsv(exportableSelectedExpenses, fileName, columns);
     
-    showSuccess(`${selectedExpenses.length} expenses exported successfully!`);
+    showSuccess(`${exportableSelectedExpenses.length} expenses exported successfully!`);
     setIsExporting(false);
   };
 
-  const isAllSelected = expenses.length > 0 && selectedExpenseIds.size === expenses.length;
-  const isIndeterminate = selectedExpenseIds.size > 0 && selectedExpenseIds.size < expenses.length;
+  const exportableExpensesCount = getExportableExpenses(expenses).length;
+  const isAllSelected = exportableExpensesCount > 0 && selectedExpenseIds.size === exportableExpensesCount;
+  const isIndeterminate = selectedExpenseIds.size > 0 && selectedExpenseIds.size < exportableExpensesCount;
 
   return (
     <>
@@ -297,8 +325,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                   <><Download className="mr-2 h-4 w-4" /> Export Selected ({selectedExpenseIds.size})</>
                 )}
               </Button>
-              <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0} variant="secondary">
-                <Download className="mr-2 h-4 w-4" /> Export All Filtered
+              <Button onClick={handleExportFilteredExpenses} disabled={isExporting || exportableExpensesCount === 0} variant="secondary">
+                <Download className="mr-2 h-4 w-4" /> Export All Filtered ({exportableExpensesCount})
               </Button>
             </div>
           </div>
@@ -321,8 +349,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                       <Checkbox
                         checked={isAllSelected}
                         onCheckedChange={handleToggleSelectAll}
-                        aria-label="Select all"
+                        aria-label="Select all exportable"
                         className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''}
+                        disabled={exportableExpensesCount === 0}
                       />
                     </TableHead>
                     <TableHead className="py-3 px-4">Date</TableHead>
@@ -335,64 +364,87 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr:last-child]:border-0">
-                  {expenses.map((expense, index) => (
-                    <TableRow key={expense.id} className={`transition-colors hover:bg-accent ${index % 2 !== 0 ? 'bg-secondary/30' : 'bg-transparent'}`}>
-                      <TableCell className="py-3 px-4 w-[50px] text-center">
-                        <Checkbox
-                          checked={selectedExpenseIds.has(expense.id)}
-                          onCheckedChange={() => handleToggleSelect(expense.id)}
-                          aria-label={`Select expense ${expense.name}`}
-                        />
-                      </TableCell>
-                      <TableCell className="py-3 px-4">{format(new Date(expense.date), 'MMM dd, yyyy')}</TableCell>
-                      <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
-                      <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
-                      <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
-                      <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
-                      <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
-                      <TableCell className="py-3 px-4">
-                        <div className="flex items-center justify-center space-x-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-foreground/60 hover:text-primary hover:bg-accent"
-                            onClick={() => handleEditClick(expense)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete the expense "{expense.name}".
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteExpense(expense.id)}
-                                  disabled={deletingId === expense.id}
-                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                                >
-                                  {deletingId === expense.id ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  ) : (
-                                    'Delete'
-                                  )}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {expenses.map((expense, index) => {
+                    const isUncategorized = expense.category === UNCATEGORIZED_PLACEHOLDER;
+                    const isSelected = selectedExpenseIds.has(expense.id);
+                    
+                    return (
+                      <TableRow 
+                        key={expense.id} 
+                        className={cn(
+                          "transition-colors hover:bg-accent",
+                          index % 2 !== 0 ? 'bg-secondary/30' : 'bg-transparent',
+                          isUncategorized && 'bg-destructive/10 hover:bg-destructive/20'
+                        )}
+                      >
+                        <TableCell className="py-3 px-4 w-[50px] text-center">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handleToggleSelect(expense.id)}
+                            aria-label={`Select expense ${expense.name}`}
+                            disabled={isUncategorized}
+                            title={isUncategorized ? "Cannot select uncategorized expense" : "Select for export"}
+                          />
+                        </TableCell>
+                        <TableCell className="py-3 px-4">{format(new Date(expense.date), 'MMM dd, yyyy')}</TableCell>
+                        <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
+                        <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
+                        <TableCell className="py-3 px-4 text-foreground/80">
+                          <div className="flex items-center space-x-2">
+                            {isUncategorized && (
+                              <AlertTriangle className="h-4 w-4 text-destructive" title="Missing Category - Cannot Export" />
+                            )}
+                            <span className={isUncategorized ? 'text-destructive font-semibold' : ''}>
+                              {expense.category}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
+                        <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
+                        <TableCell className="py-3 px-4">
+                          <div className="flex items-center justify-center space-x-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-foreground/60 hover:text-primary hover:bg-accent"
+                              onClick={() => handleEditClick(expense)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete the expense "{expense.name}".
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteExpense(expense.id)}
+                                    disabled={deletingId === expense.id}
+                                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                  >
+                                    {deletingId === expense.id ? (
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                      'Delete'
+                                    )}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

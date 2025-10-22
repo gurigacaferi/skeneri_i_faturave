@@ -45,6 +45,8 @@ interface EditExpenseDialogProps {
   onExpenseUpdated: () => void;
 }
 
+const UNCATEGORIZED_PLACEHOLDER = "UNCATEGORIZED";
+
 const expenseCategories = {
   "660 Shpenzime te personelit": ["660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional"],
   "665 Shpenzimet e zyres": ["665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera"],
@@ -58,6 +60,7 @@ const expenseCategories = {
 };
 
 const allSubcategories = Object.values(expenseCategories).flat();
+const allValidCategories = [...allSubcategories, UNCATEGORIZED_PLACEHOLDER];
 
 const vatCodes = [
   "[31] Blerjet dhe importet pa TVSH", "[32] Blerjet dhe importet investive pa TVSH", "[33] Blerjet dhe importet me TVSH jo të zbritshme", "[34] Blerjet dhe importet investive me TVSH jo të zbritshme", "[35] Importet 18%", "[37] Importet 8%", "[39] Importet investive 18%", "[41] Importet investive 8%", "[43] Blerjet vendore 18%", "No VAT", "[45] Blerjet vendore 8%", "[47] Blerjet investive vendore 18%", "[49] Blerjet investive vendore 8%", "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%", "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
@@ -71,16 +74,16 @@ const getPercentageFromVatCode = (vatCode: string): number => {
 
 const formSchema = z.object({
   name: z.string().min(1, 'Expense name is required'),
-  category: z.string().refine(val => allSubcategories.includes(val), 'A valid sub-category is required'),
+  category: z.string().refine(val => allSubcategories.includes(val), 'A valid sub-category is required. Please select one.'), // Must be a real category on save
   amount: z.coerce.number().min(0.01, 'Amount must be greater than 0'),
   date: z.date({ required_error: 'Date is required' }),
   merchant: z.string().nullable(),
   vat_code: z.string().refine(val => vatCodes.includes(val), 'A valid VAT code is required'),
   tvsh_percentage: z.coerce.number().min(0).max(100),
-  nui: z.string().nullable(), // New field
-  nr_fiskal: z.string().nullable(), // New field
-  numri_i_tvsh_se: z.string().nullable(), // New field
-  description: z.string().nullable(), // New field
+  nui: z.string().nullable(),
+  nr_fiskal: z.string().nullable(),
+  numri_i_tvsh_se: z.string().nullable(),
+  description: z.string().nullable(),
 });
 
 const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
@@ -96,16 +99,16 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: expense.name,
-      category: expense.category,
+      category: allValidCategories.includes(expense.category) ? expense.category : UNCATEGORIZED_PLACEHOLDER,
       amount: expense.amount,
       date: new Date(expense.date),
       merchant: expense.merchant,
       vat_code: expense.vat_code || 'No VAT',
       tvsh_percentage: expense.tvsh_percentage,
-      nui: expense.nui, // Initialize new fields
-      nr_fiskal: expense.nr_fiskal, // Initialize new fields
-      numri_i_tvsh_se: expense.numri_i_tvsh_se, // Initialize new fields
-      description: expense.description, // Initialize new fields
+      nui: expense.nui,
+      nr_fiskal: expense.nr_fiskal,
+      numri_i_tvsh_se: expense.numri_i_tvsh_se,
+      description: expense.description,
     },
   });
 
@@ -120,16 +123,16 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
     if (open) {
       form.reset({
         name: expense.name,
-        category: expense.category,
+        category: allValidCategories.includes(expense.category) ? expense.category : UNCATEGORIZED_PLACEHOLDER,
         amount: expense.amount,
         date: new Date(expense.date),
         merchant: expense.merchant,
         vat_code: expense.vat_code || 'No VAT',
         tvsh_percentage: expense.tvsh_percentage,
-        nui: expense.nui, // Reset new fields
-        nr_fiskal: expense.nr_fiskal, // Reset new fields
-        numri_i_tvsh_se: expense.numri_i_tvsh_se, // Reset new fields
-        description: expense.description, // Reset new fields
+        nui: expense.nui,
+        nr_fiskal: expense.nr_fiskal,
+        numri_i_tvsh_se: expense.numri_i_tvsh_se,
+        description: expense.description,
       });
     }
   }, [open, expense, form]);
@@ -137,6 +140,12 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (!session) {
       showError('You must be logged in to edit expenses.');
+      return;
+    }
+    
+    // Final check: prevent saving if category is still the placeholder
+    if (values.category === UNCATEGORIZED_PLACEHOLDER) {
+      showError('Please select a valid expense category before saving.');
       return;
     }
 
@@ -154,10 +163,10 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
           merchant: values.merchant,
           vat_code: values.vat_code,
           tvsh_percentage: values.tvsh_percentage,
-          nui: values.nui, // Save new field
-          nr_fiskal: values.nr_fiskal, // Save new field
-          numri_i_tvsh_se: values.numri_i_tvsh_se, // Save new field
-          description: values.description, // Save new field
+          nui: values.nui,
+          nr_fiskal: values.nr_fiskal,
+          numri_i_tvsh_se: values.numri_i_tvsh_se,
+          description: values.description,
         })
         .eq('id', expense.id)
         .eq('user_id', session.user.id);
@@ -212,10 +221,15 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
               value={form.watch('category')}
               disabled={loading}
             >
-              <SelectTrigger className="col-span-3">
+              <SelectTrigger className={cn("col-span-3", form.watch('category') === UNCATEGORIZED_PLACEHOLDER && 'border-destructive ring-destructive')}>
                 <SelectValue placeholder="Select a category" />
               </SelectTrigger>
               <SelectContent>
+                {form.watch('category') === UNCATEGORIZED_PLACEHOLDER && (
+                  <SelectItem value={UNCATEGORIZED_PLACEHOLDER} className="text-destructive font-bold">
+                    {UNCATEGORIZED_PLACEHOLDER} (REQUIRED)
+                  </SelectItem>
+                )}
                 {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
                   <SelectGroup key={mainCategory}>
                     <SelectLabel>{mainCategory}</SelectLabel>
@@ -401,7 +415,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || form.watch('category') === UNCATEGORIZED_PLACEHOLDER}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
