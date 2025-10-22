@@ -10,9 +10,10 @@ import { useDefaultBatch } from "@/hooks/useDefaultBatch";
 const Index = () => {
   const { session, loading, supabase } = useSession();
   const navigate = useNavigate();
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Renamed from refreshKey
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { selectedBatchId, loadingBatches, refreshBatches } = useDefaultBatch();
 
+  // Handle redirection if not authenticated
   useEffect(() => {
     if (!loading && !session) {
       navigate('/login');
@@ -33,20 +34,18 @@ const Index = () => {
   };
 
   const handleReceiptProcessed = () => {
-    setRefreshTrigger(prevKey => prevKey + 1); // Update refreshTrigger
+    setRefreshTrigger(prevKey => prevKey + 1);
     refreshBatches();
   };
 
-  if (loading || loadingBatches) {
+  if (loading || loadingBatches || !session) {
+    // Show loading state while checking session or fetching batch, 
+    // or return null if redirect is pending (handled by useEffect)
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-lg text-foreground/70">Loading...</p>
       </div>
     );
-  }
-
-  if (!session) {
-    return null;
   }
 
   return (
@@ -75,7 +74,7 @@ const Index = () => {
             <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} selectedBatchId={selectedBatchId} />
           </TabsContent>
           <TabsContent value="expenses" className="mt-6">
-            <ExpensesList refreshTrigger={refreshTrigger} /> {/* Pass refreshTrigger as a prop */}
+            <ExpensesList refreshTrigger={refreshTrigger} />
           </TabsContent>
         </Tabs>
       </main>

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
 import { showSuccess, showError } from '@/utils/toast';
 
 interface UserProfile {
@@ -24,7 +23,6 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -61,49 +59,41 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+    const handleSession = async (currentSession: Session | null) => {
+      if (currentSession) {
         setSession(currentSession);
-        if (currentSession) {
-          await fetchProfile(currentSession.user.id);
-          if (location.pathname === '/login') {
-            navigate('/');
-            showSuccess('Logged in successfully!');
-          }
-        } else {
-          setProfile(null);
-        }
-      } else if (event === 'SIGNED_OUT') {
+        await fetchProfile(currentSession.user.id);
+      } else {
         setSession(null);
         setProfile(null);
-        if (location.pathname !== '/login') {
-          navigate('/login');
-          showSuccess('Logged out successfully!');
-        }
-      } else if (event === 'AUTH_ERROR') {
-        showError('Authentication error. Please try again.');
-        setSession(null);
-        setProfile(null);
-        navigate('/login');
       }
       setLoading(false);
+    };
+
+    // 1. Set up listener for real-time auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+        handleSession(currentSession);
+        if (event === 'SIGNED_IN') showSuccess('Logged in successfully!');
+      } else if (event === 'SIGNED_OUT') {
+        handleSession(null);
+        showSuccess('Logged out successfully!');
+      } else if (event === 'AUTH_ERROR') {
+        showError('Authentication error. Please try again.');
+        handleSession(null);
+      }
     });
 
-    // Initial session check and profile fetch
+    // 2. Check initial session status immediately
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
-      setSession(initialSession);
-      if (initialSession) {
-        fetchProfile(initialSession.user.id).finally(() => setLoading(false));
-      } else {
-        setLoading(false);
-        if (location.pathname !== '/login') {
-          navigate('/login');
-        }
+      // Only set initial state if the listener hasn't already done it
+      if (loading) {
+        handleSession(initialSession);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []); // Empty dependency array ensures this runs only once
 
   return (
     <SessionContext.Provider value={{ session, supabase, loading, profile, refreshProfile }}>
