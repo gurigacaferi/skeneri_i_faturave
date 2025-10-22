@@ -104,7 +104,7 @@ Carefully analyze the following receipt image and extract all expense items into
 
 Each object in the array must have the following fields:
 - "name": (string) The name of the item or service.
-- "category": (string) MUST be one of: ${validSubcategories.join(", ")}. If the category cannot be confidently determined or does not match the list, use "UNCATEGORIZED".
+- "category": (string) MUST be one of: ${validSubcategories.join(", ")}.
 - "amount": (number) The total price of the item.
 - "date": (string) The date of the purchase in YYYY-MM-DD format.
 - "merchant": (string or null) The name of the merchant.
@@ -231,16 +231,16 @@ Example of a valid response:
 
       return {
         name: expense.name || "Unknown Item",
-        category: validSubcategories.includes(expense.category) ? expense.category : "UNCATEGORIZED", // <-- Changed fallback here
+        category: validSubcategories.includes(expense.category) ? expense.category : "690-09 Te tjera",
         amount: parseFloat(expense.amount) || 0,
         date: expense.date || new Date().toISOString().split("T")[0],
         merchant: expense.merchant || null,
         vat_code: vatCode,
         tvsh_percentage: tvshPercentage,
-        nui: expense.nui || null,
-        nr_fiskal: expense.nr_fiskal || null,
-        numri_i_tvsh_se: expense.numri_i_tvsh_se || null,
-        description: expense.description || null,
+        nui: expense.nui || null, // New field
+        nr_fiskal: expense.nr_fiskal || null, // New field
+        numri_i_tvsh_se: expense.numri_i_tvsh_se || null, // New field
+        description: expense.description || null, // New field
       };
     });
 
