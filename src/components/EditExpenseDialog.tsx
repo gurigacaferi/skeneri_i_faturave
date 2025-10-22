@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { useSession } from '@/components/SessionContextProvider';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,9 +16,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Loader2 } from 'lucide-react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CalendarIcon } from '@radix-ui/react-icons';
@@ -31,7 +31,11 @@ interface Expense {
   date: string;
   merchant: string | null;
   tvsh_percentage: number;
-  vat_code: string; // Added new vat_code field
+  vat_code: string;
+  nui: string | null; // New field
+  nr_fiskal: string | null; // New field
+  numri_i_tvsh_se: string | null; // New field
+  description: string | null; // New field
 }
 
 interface EditExpenseDialogProps {
@@ -42,88 +46,25 @@ interface EditExpenseDialogProps {
 }
 
 const expenseCategories = {
-  "660 Shpenzime te personelit": [
-    "660-01 Paga bruto",
-    "660-02 Sigurimi shendetesor",
-    "660-03 Kontributi pensional",
-  ],
-  "665 Shpenzimet e zyres": [
-    "665-01 Shpenzimet e qirase",
-    "665-02 Material harxhues",
-    "665-03 Pastrimi",
-    "665-04 Ushqim dhe pije",
-    "665-05 Shpenzime te IT-se",
-    "665-06 Shpenzimt e perfaqesimit",
-    "665-07 Asete nen 1000 euro",
-    "665-09 Te tjera",
-  ],
-  "667 Sherbimet profesionale": [
-    "667-01 Sherbimet e kontabilitetit",
-    "667-02 Sherbime ligjore",
-    "667-03 Sherbime konsulente",
-    "667-04 Sherbime auditimi",
-  ],
-  "668 Shpenzimet e udhetimit": [
-    "668-01 Akomodimi",
-    "668-02 Meditja",
-    "668-03 Transporti",
-  ],
-  "669 Shpenzimet e automjetit": [
-    "669-01 Shpenzimet e karburantit",
-    "669-02 Mirembajtje dhe riparim",
-  ],
-  "675 Shpenzimet e komunikimit": [
-    "675-01 Interneti",
-    "675-02 Telefon mobil",
-    "675-03 Dergesa postare",
-    "675-04 Telefon fiks",
-  ],
-  "683 Shpenzimet e sigurimit": [
-    "683-01 Sigurimi i automjeteve",
-    "683-02 Sigurimi i nderteses",
-  ],
-  "686 Komunalite": [
-    "686-01 Energjia elektrike",
-    "686-02 Ujesjellesi",
-    "686-03 Pastrimi",
-    "686-04 Shpenzimet e ngrohjes",
-  ],
-  "690 Shpenzime tjera operative": [
-    "690-01 Shpenzimet e anetaresimit",
-    "690-02 Shpenzimet e perkthimit",
-    "690-03 Provizion bankar",
-    "690-04 Mirembajtje e webfaqes",
-    "690-05 Taksa komunale",
-    "690-06 Mirembajtje e llogarise bankare",
-  ],
+  "660 Shpenzime te personelit": ["660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional"],
+  "665 Shpenzimet e zyres": ["665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera"],
+  "667 Sherbimet profesionale": ["667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi"],
+  "668 Shpenzimet e udhetimit": ["668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti"],
+  "669 Shpenzimet e automjetit": ["669-01 Shpenzimet e karburantit", "669-02 Mirembajtje dhe riparim"],
+  "675 Shpenzimet e komunikimit": ["675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks"],
+  "683 Shpenzimet e sigurimit": ["683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses"],
+  "686 Komunalite": ["686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes"],
+  "690 Shpenzime tjera operative": ["690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare"],
 };
 
 const allSubcategories = Object.values(expenseCategories).flat();
 
-// New VAT codes from user's request
 const vatCodes = [
-  "[31] Blerjet dhe importet pa TVSH",
-  "[32] Blerjet dhe importet investive pa TVSH",
-  "[33] Blerjet dhe importet me TVSH jo të zbritshme",
-  "[34] Blerjet dhe importet investive me TVSH jo të zbritshme",
-  "[35] Importet 18%",
-  "[37] Importet 8%",
-  "[39] Importet investive 18%",
-  "[41] Importet investive 8%",
-  "[43] Blerjet vendore 18%",
-  "No VAT",
-  "[45] Blerjet vendore 8%",
-  "[47] Blerjet investive vendore 18%",
-  "[49] Blerjet investive vendore 8%",
-  "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%",
-  "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
+  "[31] Blerjet dhe importet pa TVSH", "[32] Blerjet dhe importet investive pa TVSH", "[33] Blerjet dhe importet me TVSH jo të zbritshme", "[34] Blerjet dhe importet investive me TVSH jo të zbritshme", "[35] Importet 18%", "[37] Importet 8%", "[39] Importet investive 18%", "[41] Importet investive 8%", "[43] Blerjet vendore 18%", "No VAT", "[45] Blerjet vendore 8%", "[47] Blerjet investive vendore 18%", "[49] Blerjet investive vendore 8%", "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%", "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
 ];
 
-// Helper to extract numeric percentage from the descriptive VAT code
 const getPercentageFromVatCode = (vatCode: string): number => {
-  if (vatCode === "No VAT" || vatCode.includes("pa TVSH") || vatCode.includes("jo të zbritshme")) {
-    return 0;
-  }
+  if (vatCode === "No VAT" || vatCode.includes("pa TVSH") || vatCode.includes("jo të zbritshme")) return 0;
   const match = vatCode.match(/(\d+)%/);
   return match ? parseInt(match[1], 10) : 0;
 };
@@ -134,8 +75,12 @@ const formSchema = z.object({
   amount: z.coerce.number().min(0.01, 'Amount must be greater than 0'),
   date: z.date({ required_error: 'Date is required' }),
   merchant: z.string().nullable(),
-  vat_code: z.string().refine(val => vatCodes.includes(val), 'A valid VAT code is required'), // Validate against new VAT codes
-  tvsh_percentage: z.coerce.number().min(0).max(100), // Still keep for internal logic/DB, but derived
+  vat_code: z.string().refine(val => vatCodes.includes(val), 'A valid VAT code is required'),
+  tvsh_percentage: z.coerce.number().min(0).max(100),
+  nui: z.string().nullable(), // New field
+  nr_fiskal: z.string().nullable(), // New field
+  numri_i_tvsh_se: z.string().nullable(), // New field
+  description: z.string().nullable(), // New field
 });
 
 const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
@@ -155,17 +100,21 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
       amount: expense.amount,
       date: new Date(expense.date),
       merchant: expense.merchant,
-      vat_code: expense.vat_code || 'No VAT', // Set default or existing vat_code
+      vat_code: expense.vat_code || 'No VAT',
       tvsh_percentage: expense.tvsh_percentage,
+      nui: expense.nui, // Initialize new fields
+      nr_fiskal: expense.nr_fiskal, // Initialize new fields
+      numri_i_tvsh_se: expense.numri_i_tvsh_se, // Initialize new fields
+      description: expense.description, // Initialize new fields
     },
   });
 
   // Watch for changes in vat_code to update tvsh_percentage
-  const selectedVatCode = form.watch('vat_code');
+  const watchedVatCode = form.watch('vat_code');
   useEffect(() => {
-    const newTvshPercentage = getPercentageFromVatCode(selectedVatCode);
-    form.setValue('tvsh_percentage', newTvshPercentage);
-  }, [selectedVatCode, form]);
+    const newPercentage = getPercentageFromVatCode(watchedVatCode);
+    form.setValue('tvsh_percentage', newPercentage);
+  }, [watchedVatCode, form]);
 
   useEffect(() => {
     if (open) {
@@ -177,6 +126,10 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
         merchant: expense.merchant,
         vat_code: expense.vat_code || 'No VAT',
         tvsh_percentage: expense.tvsh_percentage,
+        nui: expense.nui, // Reset new fields
+        nr_fiskal: expense.nr_fiskal, // Reset new fields
+        numri_i_tvsh_se: expense.numri_i_tvsh_se, // Reset new fields
+        description: expense.description, // Reset new fields
       });
     }
   }, [open, expense, form]);
@@ -199,8 +152,12 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
           amount: values.amount,
           date: format(values.date, 'yyyy-MM-dd'),
           merchant: values.merchant,
-          vat_code: values.vat_code, // Save the descriptive VAT code
-          tvsh_percentage: values.tvsh_percentage, // Save the derived numeric percentage
+          vat_code: values.vat_code,
+          tvsh_percentage: values.tvsh_percentage,
+          nui: values.nui, // Save new field
+          nr_fiskal: values.nr_fiskal, // Save new field
+          numri_i_tvsh_se: values.numri_i_tvsh_se, // Save new field
+          description: values.description, // Save new field
         })
         .eq('id', expense.id)
         .eq('user_id', session.user.id);
@@ -223,7 +180,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Expense</DialogTitle>
           <DialogDescription>
@@ -339,6 +296,68 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
               <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.merchant.message}</p>
             )}
           </div>
+
+          {/* New Fields */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="nui" className="text-right">
+              NUI
+            </Label>
+            <Input
+              id="nui"
+              {...form.register('nui')}
+              className="col-span-3"
+              disabled={loading}
+            />
+            {form.formState.errors.nui && (
+              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.nui.message}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="nr_fiskal" className="text-right">
+              Nr. Fiskal
+            </Label>
+            <Input
+              id="nr_fiskal"
+              {...form.register('nr_fiskal')}
+              className="col-span-3"
+              disabled={loading}
+            />
+            {form.formState.errors.nr_fiskal && (
+              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.nr_fiskal.message}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="numri_i_tvsh_se" className="text-right">
+              Numri i TVSH-se
+            </Label>
+            <Input
+              id="numri_i_tvsh_se"
+              {...form.register('numri_i_tvsh_se')}
+              className="col-span-3"
+              disabled={loading}
+            />
+            {form.formState.errors.numri_i_tvsh_se && (
+              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.numri_i_tvsh_se.message}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="description" className="text-right">
+              Description
+            </Label>
+            <Input
+              id="description"
+              {...form.register('description')}
+              className="col-span-3"
+              disabled={loading}
+            />
+            {form.formState.errors.description && (
+              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.description.message}</p>
+            )}
+          </div>
+          {/* End New Fields */}
 
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="vat_code" className="text-right">

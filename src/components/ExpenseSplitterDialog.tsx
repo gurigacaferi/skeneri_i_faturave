@@ -239,7 +239,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto"> {/* Increased max-width */}
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Review and Split Expenses</DialogTitle>
           <DialogDescription>
@@ -253,7 +253,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
                 Expense #{index + 1}
               </div>
               
-              {/* Row 1: Name, Category, Amount, VAT Code */}
+              {/* Row 1: Name, Category, Amount, VAT Code, Date */}
               <div className="col-span-6 md:col-span-3">
                 <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
                 <Input id={`name-${exp.tempId}`} value={exp.name} onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)} disabled={loading} />
