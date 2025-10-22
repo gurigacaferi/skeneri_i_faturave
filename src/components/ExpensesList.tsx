@@ -29,7 +29,8 @@ import { Label } from '@/components/ui/label';
 import EditExpenseDialog from './EditExpenseDialog';
 import { DateRangeFilter } from './DateRangeFilter';
 import { exportExpensesToCsv } from '@/utils/exportToCsv';
-import { useDebounce } from '@/hooks/useDebounce'; // Import the new debounce hook
+import { useDebounce } from '@/hooks/useDebounce';
+import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
 
 interface Expense {
   id: string;
@@ -55,6 +56,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  
+  // State for selection
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
 
   // State for filter inputs (updates immediately)
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined; label: string }>({
@@ -106,6 +110,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
         showError('Failed to fetch expenses: ' + error.message);
       } else {
         setExpenses(data || []);
+        // Clear selection when data refreshes
+        setSelectedExpenseIds(new Set());
       }
       setLoading(false);
     };
@@ -162,6 +168,44 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     setIsExporting(false);
   };
 
+  const handleToggleSelect = (expenseId: string) => {
+    setSelectedExpenseIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(expenseId)) {
+        newSet.delete(expenseId);
+      } else {
+        newSet.add(expenseId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedExpenseIds.size === expenses.length) {
+      setSelectedExpenseIds(new Set());
+    } else {
+      setSelectedExpenseIds(new Set(expenses.map(exp => exp.id)));
+    }
+  };
+
+  const handleExportSelectedExpenses = () => {
+    if (selectedExpenseIds.size === 0) {
+      showError('Please select at least one expense to export.');
+      return;
+    }
+
+    setIsExporting(true);
+    const selectedExpenses = expenses.filter(exp => selectedExpenseIds.has(exp.id));
+    const fileName = `Selected_Expenses_${format(new Date(), 'yyyyMMdd_HHmmss')}`;
+    
+    exportExpensesToCsv(selectedExpenses, fileName);
+    showSuccess(`${selectedExpenses.length} expenses exported successfully!`);
+    setIsExporting(false);
+  };
+
+  const isAllSelected = expenses.length > 0 && selectedExpenseIds.size === expenses.length;
+  const isIndeterminate = selectedExpenseIds.size > 0 && selectedExpenseIds.size < expenses.length;
+
   return (
     <Card className="w-full max-w-5xl mx-auto shadow-lg shadow-black/5 border-0">
       <CardHeader>
@@ -213,12 +257,19 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             <Button variant="outline" onClick={handleClearFilters}>
               Clear Filters
             </Button>
-            <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0}>
+            <Button 
+              onClick={handleExportSelectedExpenses} 
+              disabled={isExporting || selectedExpenseIds.size === 0}
+              variant="default"
+            >
               {isExporting ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</>
               ) : (
-                <><Download className="mr-2 h-4 w-4" /> Export Filtered</>
+                <><Download className="mr-2 h-4 w-4" /> Export Selected ({selectedExpenseIds.size})</>
               )}
+            </Button>
+            <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0} variant="secondary">
+              <Download className="mr-2 h-4 w-4" /> Export All Filtered
             </Button>
           </div>
         </div>
@@ -237,6 +288,14 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             <Table>
               <TableHeader>
                 <TableRow className="bg-secondary/50 hover:bg-secondary/50">
+                  <TableHead className="py-3 px-4 w-[50px] text-center">
+                    <Checkbox
+                      checked={isAllSelected}
+                      onCheckedChange={handleToggleSelectAll}
+                      aria-label="Select all"
+                      className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''}
+                    />
+                  </TableHead>
                   <TableHead className="py-3 px-4">Date</TableHead>
                   <TableHead className="py-3 px-4">Merchant</TableHead>
                   <TableHead className="py-3 px-4">Item</TableHead>
@@ -249,6 +308,13 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
               <TableBody className="[&_tr:last-child]:border-0">
                 {expenses.map((expense, index) => (
                   <TableRow key={expense.id} className={`transition-colors hover:bg-accent ${index % 2 !== 0 ? 'bg-secondary/30' : 'bg-transparent'}`}>
+                    <TableCell className="py-3 px-4 w-[50px] text-center">
+                      <Checkbox
+                        checked={selectedExpenseIds.has(expense.id)}
+                        onCheckedChange={() => handleToggleSelect(expense.id)}
+                        aria-label={`Select expense ${expense.name}`}
+                      />
+                    </TableCell>
                     <TableCell className="py-3 px-4">{format(new Date(expense.date), 'MMM dd, yyyy')}</TableCell>
                     <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
                     <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
