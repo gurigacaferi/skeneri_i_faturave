@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { Resend } from 'https://esm.sh/resend@3.5.2';
 
 // Define CORS headers directly inside the function to avoid import issues.
 const corsHeaders = {
@@ -103,15 +104,42 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Error inserting invitation:', insertError.message);
-      // Return the specific database error message to the client for better debugging
       return new Response(JSON.stringify({ error: 'Failed to create invitation in database.', details: insertError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    // 3. Send Email using Resend
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendApiKey) {
+      console.error('RESEND_API_KEY is missing from environment variables.');
+      // Continue execution but log the error, as the invitation is already created
+    } else {
+      const resend = new Resend(resendApiKey);
+      const signupLink = `${req.headers.get('origin')}/login?tab=signup&code=${code}&email=${email}`;
+      
+      try {
+        await resend.emails.send({
+          from: 'onboarding@resend.dev', // Use a verified domain or resend.dev
+          to: email,
+          subject: 'Your Invitation to Fatural',
+          html: `
+            <p>You have been invited to join Fatural.</p>
+            <p>Your invitation code is: <strong>${code}</strong></p>
+            <p>This code is valid for ${expires_in_days} days.</p>
+            <p>Click the link below to sign up:</p>
+            <a href="${signupLink}">Sign Up Now</a>
+          `,
+        });
+        console.log(`Invitation email sent to ${email}`);
+      } catch (emailError) {
+        console.error('Failed to send invitation email via Resend:', emailError);
+      }
+    }
+
     return new Response(JSON.stringify({
-      message: 'Invitation created successfully',
+      message: 'Invitation created and email sent successfully',
       invitation: {
         email: newInvitation.email,
         code: newInvitation.code,
@@ -123,7 +151,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Edge function error:', error.message);
+    console.error('Unhandled Edge function error:', error.message);
     return new Response(JSON.stringify({ error: 'Internal Server Error', details: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

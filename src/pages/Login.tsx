@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { useSession } from '@/components/SessionContextProvider';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,7 +27,9 @@ const signUpSchema = z.object({
 const Login = () => {
   const { session, loading } = useSession();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'login');
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -35,7 +37,23 @@ const Login = () => {
 
   const signUpForm = useForm<z.infer<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
+    defaultValues: {
+      email: searchParams.get('email') || '',
+      password: '',
+      invitation_code: searchParams.get('code') || '',
+    },
   });
+
+  // Update form defaults and active tab when URL params change
+  useEffect(() => {
+    const tab = searchParams.get('tab') || 'login';
+    setActiveTab(tab);
+    signUpForm.reset({
+      email: searchParams.get('email') || '',
+      password: '',
+      invitation_code: searchParams.get('code') || '',
+    });
+  }, [searchParams, signUpForm]);
 
   useEffect(() => {
     if (!loading && session) {
@@ -99,7 +117,7 @@ const Login = () => {
           <img src="/ChatGPT Image Oct 11, 2025, 03_50_14 PM.png" alt="Fatural Logo" className="h-12 w-12 mb-2" />
           <h2 className="text-2xl font-bold text-center text-foreground">Welcome to Fatural!</h2>
         </div>
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
