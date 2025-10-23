@@ -18,10 +18,22 @@ serve(async (req) => {
       });
     }
 
+    // CRITICAL CHECK: Ensure Service Role Key and URL are available
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !serviceRoleKey) {
+        console.error('Server configuration error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing.');
+        return new Response(JSON.stringify({ error: 'Server configuration error: Missing required environment variables.' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
+
     // Create a Supabase client with the service role key to bypass RLS
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      supabaseUrl,
+      serviceRoleKey,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
