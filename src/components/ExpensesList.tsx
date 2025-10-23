@@ -150,8 +150,17 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     try {
       const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
       if (error) throw new Error(error.message);
+      
+      // INSTANT UI UPDATE: Remove the expense from the local state
+      setExpenses(prevExpenses => prevExpenses.filter(exp => exp.id !== expenseId));
+      setSelectedExpenseIds(prevIds => {
+        const newSet = new Set(prevIds);
+        newSet.delete(expenseId);
+        return newSet;
+      });
+
       showSuccess('Expense deleted successfully!');
-      // Data will refetch automatically due to refreshTrigger prop changing in parent
+      // No need to rely on refreshTrigger now for deletion
     } catch (error: any) {
       showError('Failed to delete expense: ' + error.message);
     } finally {
@@ -404,7 +413,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             onOpenChange={setIsEditDialogOpen}
             expense={currentExpenseToEdit}
             onExpenseUpdated={() => {
-              // No need to call fetchExpenses here, the refreshTrigger will handle it
+              // When an expense is updated, we still need to refetch the data 
+              // to ensure filters and sorting are correct, so we rely on refreshTrigger.
+              // However, for deletion, we update the state directly.
             }}
           />
         )}
