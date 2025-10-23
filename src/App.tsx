@@ -1,8 +1,8 @@
 import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
-import Index from "./pages/index";
-import Login from "./pages/login";
-import Register from "./pages/register";
-import Admin from "./pages/admin";
+import Index from "./pages/Index"; // Corrected to capital 'I'
+import Login from "./pages/Login"; // Corrected to capital 'L'
+import Register from "./pages/Register"; // Corrected to capital 'R'
+import Admin from "./pages/Admin"; // Corrected to capital 'A'
 import { SessionContextProvider } from "./components/SessionContextProvider";
 import { Toaster } from "@/components/ui/sonner";
 
