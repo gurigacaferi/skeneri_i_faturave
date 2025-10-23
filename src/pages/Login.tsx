@@ -1,188 +1,254 @@
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { supabase } from '@/integrations/supabase/client';
-import { useSession } from '@/components/SessionContextProvider';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2 } from 'lucide-react';
+import { supabase } from '../supabaseClient';
+import { Alert } from '../components/Alert';
 
-const loginSchema = z.object({
-  email: z.string().email({ message: 'Invalid email address' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
-});
-
-const signUpSchema = z.object({
-  email: z.string().email({ message: 'Invalid email address' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
-  invitation_code: z.string().min(1, { message: 'Invitation code is required' }),
-});
-
-const Login = () => {
-  const { session, loading } = useSession();
-  const navigate = useNavigate();
+export function Login() {
   const [searchParams] = useSearchParams();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'login');
+  const initialTab = searchParams.get('tab') || 'login';
+  const initialEmail = searchParams.get('email') || '';
+  const initialCode = searchParams.get('code') || '';
 
-  const loginForm = useForm<z.infer<typeof loginSchema>>({
-    resolver: zodResolver(loginSchema),
-  });
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const signUpForm = useForm<z.infer<typeof signUpSchema>>({
-    resolver: zodResolver(signUpSchema),
-    defaultValues: {
-      email: searchParams.get('email') || '',
-      password: '',
-      invitation_code: searchParams.get('code') || '',
-    },
-  });
+  // Login state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
-  // Update form defaults and active tab when URL params change
-  useEffect(() => {
-    const tab = searchParams.get('tab') || 'login';
-    setActiveTab(tab);
-    signUpForm.reset({
-      email: searchParams.get('email') || '',
-      password: '',
-      invitation_code: searchParams.get('code') || '',
+  // Sign-up state
+  const [signUpEmail, setSignUpEmail] = useState(initialEmail);
+  const [signUpPassword, setSignUpPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState(initialCode);
+
+  const navigate = useNavigate();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginEmail,
+      password: loginPassword,
     });
-  }, [searchParams, signUpForm]);
 
-  useEffect(() => {
-    if (!loading && session) {
-      navigate('/');
+    if (error) {
+      setError(error.message);
+    } else {
+      navigate('/dashboard');
     }
-  }, [session, loading, navigate]);
-
-  const handleLogin = async (values: z.infer<typeof loginSchema>) => {
-    setIsSubmitting(true);
-    const toastId = showLoading('Signing in...');
-    try {
-      const { error } = await supabase.auth.signInWithPassword(values);
-      if (error) throw error;
-      // The onAuthStateChange listener in SessionContextProvider will handle success toast and navigation
-    } catch (error: any) {
-      showError(error.message || 'Failed to sign in.');
-    } finally {
-      dismissToast(toastId);
-      setIsSubmitting(false);
-    }
+    setLoading(false);
   };
 
-  const handleSignUp = async (values: z.infer<typeof signUpSchema>) => {
-    setIsSubmitting(true);
-    const toastId = showLoading('Creating your account...');
+  const handleSignUpWithInvitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+
     try {
-      const { data, error } = await supabase.functions.invoke('sign-up-with-invitation', {
-        body: {
-          email: values.email,
-          password: values.password,
-          invitation_code: values.invitation_code,
-        },
+      // 1. Call the Edge Function
+      const { data, error: functionError } = await supabase.functions.invoke('sign-up-with-invitation', {
+        body: { email: signUpEmail, password: signUpPassword, invitation_code: inviteCode },
       });
 
-      if (error) throw new Error(error.message);
-      if (data.error) throw new Error(data.error);
+      if (functionError) {
+        // This handles network errors or function execution errors (500s)
+        throw new Error(functionError.message);
+      }
 
-      showSuccess('Account created! Please sign in.');
-      // Automatically sign in the user after successful sign-up
-      await handleLogin({ email: values.email, password: values.password });
-    } catch (error: any) {
-      showError(error.message || 'Sign up failed. Please check your invitation code and details.');
+      // 2. Handle the function's response (which might contain a custom error)
+      if (data && data.error) {
+        // The function returned a custom error (e.g., 400, 403, 404)
+        throw new Error(data.error);
+      }
+
+      // Success logic
+      setSuccessMessage('Account created successfully! You can now log in.');
+      setActiveTab('login');
+      setLoginEmail(signUpEmail);
+      setLoginPassword('');
+      setSignUpEmail('');
+      setSignUpPassword('');
+      setInviteCode('');
+
+    } catch (err) {
+      let errorMessage = 'An unexpected error occurred during sign-up.';
+      
+      if (err instanceof Error) {
+        // Check for specific error messages returned by the Edge Function
+        if (err.message.includes('Invalid invitation code.')) {
+          errorMessage = 'The invitation code is incorrect or does not exist.';
+        } else if (err.message.includes('not valid for this email address')) {
+          errorMessage = 'This invitation code is not valid for the provided email address.';
+        } else if (err.message.includes('already been used')) {
+          errorMessage = 'This invitation code has already been used.';
+        } else if (err.message.includes('expired')) {
+          errorMessage = 'This invitation code has expired.';
+        } else {
+          // Fallback for other errors (e.g., network, 500 server error)
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
-      dismissToast(toastId);
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
-  if (loading || session) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-lg text-foreground/70">Loading...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-6">
-          <img src="/ChatGPT Image Oct 11, 2025, 03_50_14 PM.png" alt="Fatural Logo" className="h-12 w-12 mb-2" />
-          <h2 className="text-2xl font-bold text-center text-foreground">Welcome to Fatural!</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            {activeTab === 'login' ? 'Sign in to your account' : 'Create a new account'}
+          </h2>
         </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
-          </TabsList>
-          <TabsContent value="login">
-            <Card>
-              <CardHeader>
-                <CardTitle>Login</CardTitle>
-                <CardDescription>Enter your credentials to access your account.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
-                  <div>
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input id="login-email" type="email" {...loginForm.register('email')} />
-                    {loginForm.formState.errors.email && <p className="text-sm text-red-500 mt-1">{loginForm.formState.errors.email.message}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="login-password">Password</Label>
-                    <Input id="login-password" type="password" {...loginForm.register('password')} />
-                    {loginForm.formState.errors.password && <p className="text-sm text-red-500 mt-1">{loginForm.formState.errors.password.message}</p>}
-                  </div>
-                  <Button type="submit" className="w-full" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Login
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="signup">
-            <Card>
-              <CardHeader>
-                <CardTitle>Sign Up</CardTitle>
-                <CardDescription>You need a valid invitation code to create an account.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-4">
-                  <div>
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input id="signup-email" type="email" {...signUpForm.register('email')} />
-                    {signUpForm.formState.errors.email && <p className="text-sm text-red-500 mt-1">{signUpForm.formState.errors.email.message}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="signup-password">Password</Label>
-                    <Input id="signup-password" type="password" {...signUpForm.register('password')} />
-                    {signUpForm.formState.errors.password && <p className="text-sm text-red-500 mt-1">{signUpForm.formState.errors.password.message}</p>}
-                  </div>
-                  <div>
-                    <Label htmlFor="invitation_code">Invitation Code</Label>
-                    <Input id="invitation_code" type="text" {...signUpForm.register('invitation_code')} />
-                    {signUpForm.formState.errors.invitation_code && <p className="text-sm text-red-500 mt-1">{signUpForm.formState.errors.invitation_code.message}</p>}
-                  </div>
-                  <Button type="submit" className="w-full" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Sign Up
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+
+        {error && <Alert type="error" message={error} />}
+        {successMessage && <Alert type="success" message={successMessage} />}
+
+        <div className="flex justify-center space-x-4 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('login')}
+            className={`py-2 px-4 text-sm font-medium ${
+              activeTab === 'login'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Login
+          </button>
+          <button
+            onClick={() => setActiveTab('signup')}
+            className={`py-2 px-4 text-sm font-medium ${
+              activeTab === 'signup'
+                ? 'border-b-2 border-indigo-500 text-indigo-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Sign Up
+          </button>
+        </div>
+
+        {activeTab === 'login' ? (
+          <form className="mt-8 space-y-6" onSubmit={handleLogin}>
+            <input type="hidden" name="remember" defaultValue="true" />
+            <div className="rounded-md shadow-sm -space-y-px">
+              <div>
+                <label htmlFor="email-address" className="sr-only">
+                  Email address
+                </label>
+                <input
+                  id="email-address"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                  placeholder="Email address"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className="sr-only">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                  placeholder="Password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                {loading ? 'Signing In...' : 'Sign in'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="mt-8 space-y-6" onSubmit={handleSignUpWithInvitation}>
+            <input type="hidden" name="remember" defaultValue="true" />
+            <div className="rounded-md shadow-sm -space-y-px">
+              <div>
+                <label htmlFor="signup-email" className="sr-only">
+                  Email address
+                </label>
+                <input
+                  id="signup-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                  placeholder="Email address"
+                  value={signUpEmail}
+                  onChange={(e) => setSignUpEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="signup-password" className="sr-only">
+                  Password
+                </label>
+                <input
+                  id="signup-password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                  placeholder="Password"
+                  value={signUpPassword}
+                  onChange={(e) => setSignUpPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="invite-code" className="sr-only">
+                  Invitation Code
+                </label>
+                <input
+                  id="invite-code"
+                  name="invite-code"
+                  type="text"
+                  required
+                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                  placeholder="Invitation Code"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              >
+                {loading ? 'Signing Up...' : 'Sign up'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
-};
-
-export default Login;
+}
