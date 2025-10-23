@@ -1,8 +1,8 @@
 import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
-import Index from "./pages/index"; // Changed from Index
-import Login from "./pages/login"; // Changed from Login
-import Register from "./pages/register"; // Changed from Register
-import Admin from "./pages/admin"; // Changed from Admin
+import Index from "./pages/index";
+import Login from "./pages/login";
+import Register from "./pages/register";
+import Admin from "./pages/admin";
 import { SessionContextProvider } from "./components/SessionContextProvider";
 import { Toaster } from "@/components/ui/sonner";
 
