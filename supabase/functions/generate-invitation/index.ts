@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { Resend } from 'npm:resend@3.5.2';
+import { Resend } from 'https://esm.sh/resend@3.5.2'; // FIX: Changed from 'npm:' to 'https://esm.sh/'
 
 // Define CORS headers directly inside the function to avoid import issues.
 const corsHeaders = {
