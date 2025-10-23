@@ -1,13 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
-// Define CORS headers directly inside the function to avoid import issues.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper function to generate a simple, unique code
 function generateInvitationCode(length = 10) {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
@@ -24,24 +22,17 @@ serve(async (req) => {
 
   try {
     const { email, expires_in_days = 7 } = await req.json();
-
     if (!email) {
       return new Response(JSON.stringify({ error: 'Email is required.' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // 1. Authenticate and check user role (using the user's JWT)
+    // Step 1: Authenticate the requesting user as an admin
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: No Authorization header' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
+    if (!authHeader) throw new Error('Unauthorized: No Authorization header');
     const token = authHeader.replace('Bearer ', '');
+    
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -49,28 +40,15 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    if (userError || !user) throw new Error('Unauthorized: Invalid or expired token');
 
-    // Check if user is an admin
     const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
+      .from('profiles').select('role').eq('id', user.id).single();
     if (profileError || profile?.role !== 'admin') {
-      return new Response(JSON.stringify({ error: 'Forbidden: Only administrators can generate invitations.' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      throw new Error('Forbidden: Only administrators can generate invitations.');
     }
 
-    // 2. Use Service Role Client to insert the invitation (bypassing RLS)
+    // Step 2: Create the invitation in the database using the service role key
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -83,39 +61,53 @@ serve(async (req) => {
 
     const { data: newInvitation, error: insertError } = await supabaseAdmin
       .from('invitations')
-      .insert({
-        email: email.toLowerCase(),
-        code: code,
-        expires_at: expiresAt.toISOString(),
-      })
-      .select()
-      .single();
+      .insert({ email: email.toLowerCase(), code: code, expires_at: expiresAt.toISOString() })
+      .select().single();
 
-    if (insertError) {
-      console.error('Error inserting invitation:', insertError.message);
-      return new Response(JSON.stringify({ error: 'Failed to create invitation in database.', details: insertError.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (insertError) throw new Error(`Database error: ${insertError.message}`);
+
+    // Step 3: Send the invitation email using Resend
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    if (!resendApiKey) throw new Error('Server configuration error: RESEND_API_KEY is not set.');
+
+    const appUrl = Deno.env.get('SUPABASE_URL')?.split('.co')[0].replace('https://', 'https://www.');
+    const invitationLink = `${appUrl}.app/register?code=${code}`;
+
+    const resendResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: 'Fatural <onboarding@resend.dev>', // Replace with your desired "from" address
+        to: [email],
+        subject: 'You are invited to join Fatural',
+        html: `
+          <h1>Welcome to Fatural!</h1>
+          <p>You have been invited to join. Please use the following code to register:</p>
+          <h2>${code}</h2>
+          <p>Or click the link below:</p>
+          <a href="${invitationLink}" target="_blank">Register Now</a>
+          <p>This code will expire in ${expires_in_days} days.</p>
+        `,
+      }),
+    });
+
+    if (!resendResponse.ok) {
+      const errorBody = await resendResponse.json();
+      console.error('Resend API Error:', errorBody);
+      throw new Error(`Failed to send email: ${errorBody.message}`);
     }
 
-    return new Response(JSON.stringify({
-      message: 'Invitation created successfully',
-      invitation: {
-        email: newInvitation.email,
-        code: newInvitation.code,
-        expires_at: newInvitation.expires_at,
-      }
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ message: 'Invitation created and sent successfully' }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Edge function error:', error.message);
-    return new Response(JSON.stringify({ error: 'Internal Server Error', details: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
