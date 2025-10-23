@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
 import { Loader2, Mail, Copy } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { format } from 'date-fns';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
@@ -49,6 +50,11 @@ const InvitationGenerator: React.FC = () => {
 
       if (error) throw new Error(error.message);
       if (data.error) throw new Error(data.error);
+
+      // Add a check to ensure the invitation data is present
+      if (!data || !data.invitation) {
+        throw new Error('Server did not return the expected invitation data.');
+      }
 
       setGeneratedInvitation(data.invitation as GeneratedInvitation);
       showSuccess(`Invitation code generated for ${values.email}!`);
