@@ -169,6 +169,35 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     }
   };
 
+  const handleBulkDeleteExpenses = async () => {
+    if (!session || selectedExpenseIds.size === 0) return;
+
+    const idsToDelete = Array.from(selectedExpenseIds);
+    const toastId = showLoading(`Deleting ${idsToDelete.length} expenses...`);
+
+    try {
+      // Use the .in() filter for efficient bulk deletion
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (error) throw new Error(error.message);
+
+      // Update local state: filter out all deleted IDs
+      setExpenses(prevExpenses => prevExpenses.filter(exp => !selectedExpenseIds.has(exp.id)));
+      
+      // Clear the selection
+      setSelectedExpenseIds(new Set());
+
+      showSuccess(`${idsToDelete.length} expenses deleted successfully!`);
+    } catch (error: any) {
+      showError('Failed to delete selected expenses: ' + error.message);
+    } finally {
+      dismissToast(toastId);
+    }
+  };
+
   const handleEditClick = (expense: Expense) => {
     setCurrentExpenseToEdit(expense);
     setIsEditDialogOpen(true);
@@ -295,6 +324,37 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
               <Button variant="outline" onClick={handleClearFilters}>
                 Clear Filters
               </Button>
+              
+              {/* Bulk Delete Button */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="destructive" 
+                    disabled={selectedExpenseIds.size === 0}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> 
+                    Delete Selected ({selectedExpenseIds.size})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm Bulk Deletion</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you absolutely sure you want to delete {selectedExpenseIds.size} selected expenses? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={handleBulkDeleteExpenses}
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    >
+                      Yes, Delete All
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
               <Button 
                 onClick={handleExportSelectedExpenses} 
                 disabled={isExporting || selectedExpenseIds.size === 0}
@@ -415,7 +475,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             onExpenseUpdated={() => {
               // When an expense is updated, we still need to refetch the data 
               // to ensure filters and sorting are correct, so we rely on refreshTrigger.
-              // However, for deletion, we update the state directly.
             }}
           />
         )}
