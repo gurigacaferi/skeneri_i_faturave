@@ -6,7 +6,7 @@ import { showSuccess, showError } from '@/utils/toast';
 interface UserProfile {
   id: string;
   csv_export_columns: string[] | null; // New field for export preferences
-  // Add other profile fields here if necessary
+  role: 'user' | 'admin'; // Added role field
 }
 
 interface SessionContextType {
@@ -27,7 +27,7 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, csv_export_columns')
+      .select('id, csv_export_columns, role') // Fetch the new role column
       .eq('id', userId)
       .single();
 
@@ -40,8 +40,8 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
       // If no profile exists, create a minimal one (assuming RLS allows this)
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
-        .insert({ id: userId, csv_export_columns: null })
-        .select('id, csv_export_columns')
+        .insert({ id: userId, csv_export_columns: null, role: 'user' }) // Default new users to 'user' role
+        .select('id, csv_export_columns, role')
         .single();
       
       if (insertError) {
