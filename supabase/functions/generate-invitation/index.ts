@@ -70,10 +70,20 @@ serve(async (req) => {
       });
     }
 
+    // CRITICAL CHECK: Ensure Service Role Key is available
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceRoleKey) {
+        console.error('SUPABASE_SERVICE_ROLE_KEY is missing from environment variables.');
+        return new Response(JSON.stringify({ error: 'Server configuration error: Service Role Key is missing.' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
+
     // 2. Use Service Role Client to insert the invitation (bypassing RLS)
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      serviceRoleKey,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
@@ -93,6 +103,7 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Error inserting invitation:', insertError.message);
+      // Return the specific database error message to the client for better debugging
       return new Response(JSON.stringify({ error: 'Failed to create invitation in database.', details: insertError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
