@@ -6,20 +6,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReceiptUpload from "@/components/ReceiptUpload";
 import ExpensesList from "@/components/ExpensesList";
 import { useDefaultBatch } from "@/hooks/useDefaultBatch";
+import { Loader2 } from "lucide-react";
 
 const Index = () => {
-  const { session, loading, supabase, profile } = useSession();
+  const { session, loading: sessionLoading, supabase, profile } = useSession();
   const navigate = useNavigate();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { selectedBatchId, loadingBatches, refreshBatches } = useDefaultBatch();
 
-  // Handle redirection if not authenticated
+  // Handle redirection if user is not logged in
   useEffect(() => {
-    if (!loading && !session) {
+    if (!sessionLoading && !session) {
       navigate('/login');
     }
-  }, [session, loading, navigate]);
+  }, [session, sessionLoading, navigate]);
 
+  // Refresh batches when the session is available
   useEffect(() => {
     if (session) {
       refreshBatches();
@@ -27,20 +29,32 @@ const Index = () => {
   }, [session, refreshBatches]);
 
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error logging out:', error.message);
-    }
+    await supabase.auth.signOut();
+    navigate('/login'); // Redirect to login after sign out
   };
 
-  if (loading || loadingBatches || !session) {
-    // Show loading state while checking session or fetching batch, 
-    // or return null if redirect is pending (handled by useEffect)
+  const handleReceiptProcessed = () => {
+    setRefreshTrigger(prev => prev + 1); // Increment to trigger a refresh in ExpensesList
+  };
+
+  // Combined loading state
+  const isLoading = sessionLoading || loadingBatches;
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-lg text-foreground/70">Loading...</p>
+      <div className="min-h-screen w-full flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center space-y-2">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-lg text-muted-foreground">Loading Your Dashboard...</p>
+        </div>
       </div>
     );
+  }
+
+  // If not loading and still no session, the redirect is in progress.
+  // Render nothing to avoid a flash of content.
+  if (!session) {
+    return null;
   }
 
   return (
