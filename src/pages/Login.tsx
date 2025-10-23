@@ -1,4 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '@/supabaseClient'; // CORRECTED: Import from '@/supabaseClient' (assuming '@/' is setup for src/)
-// ... rest of the code
+import { supabase } from '../supabaseClient'; // Corrected relative path
+import { Alert } from '../components/Alert';
+
+export function Login() {
+// ... (rest of the file remains the same)
