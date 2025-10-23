@@ -8,7 +8,7 @@ import ExpensesList from "@/components/ExpensesList";
 import { useDefaultBatch } from "@/hooks/useDefaultBatch";
 
 const Index = () => {
-  const { session, loading, supabase } = useSession();
+  const { session, loading, supabase, profile } = useSession();
   const navigate = useNavigate();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { selectedBatchId, loadingBatches, refreshBatches } = useDefaultBatch();
@@ -33,11 +33,6 @@ const Index = () => {
     }
   };
 
-  const handleReceiptProcessed = () => {
-    setRefreshTrigger(prevKey => prevKey + 1);
-    refreshBatches();
-  };
-
   if (loading || loadingBatches || !session) {
     // Show loading state while checking session or fetching batch, 
     // or return null if redirect is pending (handled by useEffect)
@@ -58,9 +53,16 @@ const Index = () => {
               Fatural
             </h1>
           </div>
-          <Button onClick={handleLogout} variant="outline">
-            Logout
-          </Button>
+          <div className="flex items-center space-x-4">
+            {profile?.role === 'admin' && (
+              <Button onClick={() => navigate('/admin')} variant="secondary">
+                Admin Panel
+              </Button>
+            )}
+            <Button onClick={handleLogout} variant="outline">
+              Logout
+            </Button>
+          </div>
         </div>
       </header>
 
