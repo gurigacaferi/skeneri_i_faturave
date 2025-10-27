@@ -22,6 +22,8 @@ import { CalendarIcon } from '@radix-ui/react-icons';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import ReceiptViewer from './ReceiptViewer'; // Import ReceiptViewer
+import { Textarea } from '@/components/ui/textarea'; // Use Textarea for description
 
 interface Expense {
   id: string;
@@ -32,10 +34,11 @@ interface Expense {
   merchant: string | null;
   tvsh_percentage: number;
   vat_code: string;
-  nui: string | null; // New field
-  nr_fiskal: string | null; // New field
-  numri_i_tvsh_se: string | null; // New field
-  description: string | null; // New field
+  nui: string | null;
+  nr_fiskal: string | null;
+  numri_i_tvsh_se: string | null;
+  description: string | null;
+  receipt_id: string | null; // Added receipt_id
 }
 
 interface EditExpenseDialogProps {
@@ -77,10 +80,10 @@ const formSchema = z.object({
   merchant: z.string().nullable(),
   vat_code: z.string().refine(val => vatCodes.includes(val), 'A valid VAT code is required'),
   tvsh_percentage: z.coerce.number().min(0).max(100),
-  nui: z.string().nullable(), // New field
-  nr_fiskal: z.string().nullable(), // New field
-  numri_i_tvsh_se: z.string().nullable(), // New field
-  description: z.string().nullable(), // New field
+  nui: z.string().nullable(),
+  nr_fiskal: z.string().nullable(),
+  numri_i_tvsh_se: z.string().nullable(),
+  description: z.string().nullable(),
 });
 
 const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
@@ -89,7 +92,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
   expense,
   onExpenseUpdated,
 }) => {
-  const { supabase, session } = useSession();
+  const { session } = useSession();
   const [loading, setLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -102,10 +105,10 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
       merchant: expense.merchant,
       vat_code: expense.vat_code || 'No VAT',
       tvsh_percentage: expense.tvsh_percentage,
-      nui: expense.nui, // Initialize new fields
-      nr_fiskal: expense.nr_fiskal, // Initialize new fields
-      numri_i_tvsh_se: expense.numri_i_tvsh_se, // Initialize new fields
-      description: expense.description, // Initialize new fields
+      nui: expense.nui,
+      nr_fiskal: expense.nr_fiskal,
+      numri_i_tvsh_se: expense.numri_i_tvsh_se,
+      description: expense.description,
     },
   });
 
@@ -126,10 +129,10 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
         merchant: expense.merchant,
         vat_code: expense.vat_code || 'No VAT',
         tvsh_percentage: expense.tvsh_percentage,
-        nui: expense.nui, // Reset new fields
-        nr_fiskal: expense.nr_fiskal, // Reset new fields
-        numri_i_tvsh_se: expense.numri_i_tvsh_se, // Reset new fields
-        description: expense.description, // Reset new fields
+        nui: expense.nui,
+        nr_fiskal: expense.nr_fiskal,
+        numri_i_tvsh_se: expense.numri_i_tvsh_se,
+        description: expense.description,
       });
     }
   }, [open, expense, form]);
@@ -144,7 +147,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
     const toastId = showLoading('Updating expense...');
 
     try {
-      const { error } = await supabase
+      const { error } = await session.supabase
         .from('expenses')
         .update({
           name: values.name,
@@ -154,10 +157,10 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
           merchant: values.merchant,
           vat_code: values.vat_code,
           tvsh_percentage: values.tvsh_percentage,
-          nui: values.nui, // Save new field
-          nr_fiskal: values.nr_fiskal, // Save new field
-          numri_i_tvsh_se: values.numri_i_tvsh_se, // Save new field
-          description: values.description, // Save new field
+          nui: values.nui,
+          nr_fiskal: values.nr_fiskal,
+          numri_i_tvsh_se: values.numri_i_tvsh_se,
+          description: values.description,
         })
         .eq('id', expense.id)
         .eq('user_id', session.user.id);
@@ -180,239 +183,204 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[1000px] max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="p-6 pb-0">
           <DialogTitle>Edit Expense</DialogTitle>
           <DialogDescription>
             Make changes to your expense here. Click save when you're done.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="name" className="text-right">
-              Name
-            </Label>
-            <Input
-              id="name"
-              {...form.register('name')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.name && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.name.message}</p>
-            )}
-          </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 pt-4">
+          {/* Left Column: Receipt Viewer (40% width) */}
+          <aside className="lg:col-span-2">
+            <ReceiptViewer receiptId={expense.receipt_id} />
+          </aside>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="category" className="text-right">
-              Category
-            </Label>
-            <Select
-              onValueChange={(value) => form.setValue('category', value)}
-              value={form.watch('category')}
-              disabled={loading}
-            >
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder="Select a category" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                  <SelectGroup key={mainCategory}>
-                    <SelectLabel>{mainCategory}</SelectLabel>
-                    {subcategories.map((subCategory) => (
-                      <SelectItem key={subCategory} value={subCategory}>
-                        {subCategory}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.category && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.category.message}</p>
-            )}
-          </div>
+          {/* Right Column: Form Data (60% width) */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="lg:col-span-3 grid gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Row 1 */}
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" {...form.register('name')} disabled={loading} />
+                {form.formState.errors.name && (
+                  <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
+                )}
+              </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="amount" className="text-right">
-              Amount
-            </Label>
-            <Input
-              id="amount"
-              type="number"
-              step="0.01"
-              {...form.register('amount')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.amount && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.amount.message}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="date" className="text-right">
-              Date
-            </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant={'outline'}
-                  className={cn(
-                    'col-span-3 justify-start text-left font-normal',
-                    !form.watch('date') && 'text-muted-foreground'
-                  )}
+              {/* Row 2 */}
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="category">Category</Label>
+                <Select
+                  onValueChange={(value) => form.setValue('category', value)}
+                  value={form.watch('category')}
                   disabled={loading}
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {form.watch('date') ? format(form.watch('date'), 'PPP') : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={form.watch('date')}
-                  onSelect={(date) => form.setValue('date', date!)}
-                  initialFocus
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                      <SelectGroup key={mainCategory}>
+                        <SelectLabel>{mainCategory}</SelectLabel>
+                        {subcategories.map((subCategory) => (
+                          <SelectItem key={subCategory} value={subCategory}>
+                            {subCategory}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.formState.errors.category && (
+                  <p className="text-sm text-red-500">{form.formState.errors.category.message}</p>
+                )}
+              </div>
+
+              {/* Row 3: Amount & Date */}
+              <div className="space-y-1">
+                <Label htmlFor="amount">Amount</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  {...form.register('amount')}
+                  disabled={loading}
                 />
-              </PopoverContent>
-            </Popover>
-            {form.formState.errors.date && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.date.message}</p>
-            )}
-          </div>
+                {form.formState.errors.amount && (
+                  <p className="text-sm text-red-500">{form.formState.errors.amount.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="date">Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={'outline'}
+                      className={cn(
+                        'w-full justify-start text-left font-normal',
+                        !form.watch('date') && 'text-muted-foreground'
+                      )}
+                      disabled={loading}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {form.watch('date') ? format(form.watch('date'), 'PPP') : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={form.watch('date')}
+                      onSelect={(date) => form.setValue('date', date!)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {form.formState.errors.date && (
+                  <p className="text-sm text-red-500">{form.formState.errors.date.message}</p>
+                )}
+              </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="merchant" className="text-right">
-              Merchant
-            </Label>
-            <Input
-              id="merchant"
-              {...form.register('merchant')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.merchant && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.merchant.message}</p>
-            )}
-          </div>
+              {/* Row 4: Merchant & NUI */}
+              <div className="space-y-1">
+                <Label htmlFor="merchant">Merchant</Label>
+                <Input id="merchant" {...form.register('merchant')} disabled={loading} />
+                {form.formState.errors.merchant && (
+                  <p className="text-sm text-red-500">{form.formState.errors.merchant.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="nui">NUI</Label>
+                <Input id="nui" {...form.register('nui')} disabled={loading} />
+                {form.formState.errors.nui && (
+                  <p className="text-sm text-red-500">{form.formState.errors.nui.message}</p>
+                )}
+              </div>
 
-          {/* New Fields */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="nui" className="text-right">
-              NUI
-            </Label>
-            <Input
-              id="nui"
-              {...form.register('nui')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.nui && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.nui.message}</p>
-            )}
-          </div>
+              {/* Row 5: Nr. Fiskal & Numri i TVSH-se */}
+              <div className="space-y-1">
+                <Label htmlFor="nr_fiskal">Nr. Fiskal</Label>
+                <Input id="nr_fiskal" {...form.register('nr_fiskal')} disabled={loading} />
+                {form.formState.errors.nr_fiskal && (
+                  <p className="text-sm text-red-500">{form.formState.errors.nr_fiskal.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="numri_i_tvsh_se">Numri i TVSH-se</Label>
+                <Input id="numri_i_tvsh_se" {...form.register('numri_i_tvsh_se')} disabled={loading} />
+                {form.formState.errors.numri_i_tvsh_se && (
+                  <p className="text-sm text-red-500">{form.formState.errors.numri_i_tvsh_se.message}</p>
+                )}
+              </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="nr_fiskal" className="text-right">
-              Nr. Fiskal
-            </Label>
-            <Input
-              id="nr_fiskal"
-              {...form.register('nr_fiskal')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.nr_fiskal && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.nr_fiskal.message}</p>
-            )}
-          </div>
+              {/* Row 6: VAT Code & TVSH (%) */}
+              <div className="space-y-1">
+                <Label htmlFor="vat_code">VAT Code</Label>
+                <Select
+                  onValueChange={(value) => form.setValue('vat_code', value)}
+                  value={form.watch('vat_code')}
+                  disabled={loading}
+                >
+                  <SelectTrigger id="vat_code">
+                    <SelectValue placeholder="Select VAT code" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vatCodes.map((code) => (
+                      <SelectItem key={code} value={code}>
+                        {code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.formState.errors.vat_code && (
+                  <p className="text-sm text-red-500">{form.formState.errors.vat_code.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tvsh_percentage">TVSH (%)</Label>
+                <Input
+                  id="tvsh_percentage"
+                  type="number"
+                  value={form.watch('tvsh_percentage')}
+                  className="bg-muted/50 cursor-not-allowed"
+                  readOnly
+                  disabled
+                />
+              </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="numri_i_tvsh_se" className="text-right">
-              Numri i TVSH-se
-            </Label>
-            <Input
-              id="numri_i_tvsh_se"
-              {...form.register('numri_i_tvsh_se')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.numri_i_tvsh_se && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.numri_i_tvsh_se.message}</p>
-            )}
-          </div>
+              {/* Row 7: Description (Span 2) */}
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  {...form.register('description')}
+                  className="min-h-[80px]"
+                  disabled={loading}
+                />
+                {form.formState.errors.description && (
+                  <p className="text-sm text-red-500">{form.formState.errors.description.message}</p>
+                )}
+              </div>
+            </div>
 
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="description" className="text-right">
-              Description
-            </Label>
-            <Input
-              id="description"
-              {...form.register('description')}
-              className="col-span-3"
-              disabled={loading}
-            />
-            {form.formState.errors.description && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.description.message}</p>
-            )}
-          </div>
-          {/* End New Fields */}
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="vat_code" className="text-right">
-              VAT Code
-            </Label>
-            <Select
-              onValueChange={(value) => form.setValue('vat_code', value)}
-              value={form.watch('vat_code')}
-              disabled={loading}
-            >
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder="Select VAT code" />
-              </SelectTrigger>
-              <SelectContent>
-                {vatCodes.map((code) => (
-                  <SelectItem key={code} value={code}>
-                    {code}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.vat_code && (
-              <p className="col-span-4 text-right text-sm text-red-500">{form.formState.errors.vat_code.message}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="tvsh_percentage" className="text-right">
-              TVSH (%)
-            </Label>
-            <Input
-              id="tvsh_percentage"
-              type="number"
-              value={form.watch('tvsh_percentage')}
-              className="col-span-3"
-              disabled // This field is now derived and read-only
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                'Save changes'
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter className="mt-4 sm:col-span-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   );
