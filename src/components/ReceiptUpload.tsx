@@ -40,8 +40,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>(null);
 
-  // Removed QuickBooks state and connection check logic
-
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { id: uuidv4() }));
     setFiles(prevFiles => [...prevFiles, ...newFiles]);
@@ -63,7 +61,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const getFileIcon = (fileType: string) => {
     if (fileType.startsWith('image/')) return <Image className="h-5 w-5 text-primary" />;
     if (fileType === 'application/pdf') return <FileIcon className="h-5 w-5 text-red-500" />;
-    return <FileText className="h-5 w-5 text-gray-500" />;
+    return <FileIcon className="h-5 w-5 text-gray-500" />;
   };
 
   const handleFileUpload = async () => {
@@ -76,7 +74,38 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     let hasError = false;
 
     for (const file of files) {
+      let receiptId: string | undefined;
       try {
+        // 1. Upload file to Supabase Storage
+        const fileExtension = file.name.split('.').pop();
+        const storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
+
+        const { error: storageError } = await supabase.storage
+          .from('receipts')
+          .upload(storagePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+          });
+
+        if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
+
+        // 2. Insert receipt record with storage path
+        const { data: receiptData, error: receiptInsertError } = await supabase
+          .from('receipts')
+          .insert({ 
+            user_id: session.user.id, 
+            filename: file.name, 
+            batch_id: selectedBatchId,
+            storage_path: storagePath, // Save the path
+            status: 'processing'
+          })
+          .select('id')
+          .single();
+
+        if (receiptInsertError) throw new Error(`DB insert failed: ${receiptInsertError.message}`);
+        receiptId = receiptData.id;
+
+        // 3. Read file to base64 for AI processing
         const base64Image = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
@@ -84,17 +113,28 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           reader.onerror = (error) => reject(error);
         });
 
-        const { data, error } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Image, filename: file.name, batchId: selectedBatchId },
+        // 4. Invoke Edge Function with base64 image and the new receiptId
+        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
+          body: { base64Image, filename: file.name, batchId: selectedBatchId, receiptId }, // Pass receiptId
         });
 
-        if (error) throw new Error(error.message);
+        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
         if (data.expenses) {
-          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: data.receiptId, expense: exp }));
+          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
+        
+        // 5. Update receipt status to processed
+        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
+
       } catch (error: any) {
         hasError = true;
         showError(`Failed to process ${file.name}: ${error.message}`);
+        console.error(`Error processing ${file.name}:`, error);
+        
+        // If processing failed, mark receipt as failed if it was created
+        if (receiptId) {
+            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
+        }
       }
     }
 

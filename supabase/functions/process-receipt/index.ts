@@ -61,7 +61,13 @@ serve(async (req) => {
   }
 
   try {
-    const { base64Image, filename, batchId } = await req.json();
+    const { base64Image, filename, batchId, receiptId } = await req.json();
+
+    if (!receiptId) {
+        return new Response(JSON.stringify({ error: "Missing receiptId from client." }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+    }
 
     // JWT verification
     const authHeader = req.headers.get("Authorization");
@@ -85,17 +91,8 @@ serve(async (req) => {
       });
     }
 
-    const { data: receiptData, error: receiptError } = await supabase
-      .from("receipts")
-      .insert({ user_id: user.id, filename, batch_id: batchId })
-      .select()
-      .single();
-
-    if (receiptError) {
-      return new Response(JSON.stringify({ error: "Failed to save receipt", details: receiptError.message }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // NOTE: Receipt record creation is now handled by the client (ReceiptUpload.tsx)
+    // We rely on the passed receiptId for subsequent expense insertion.
 
     const systemPrompt = `You are an expert AI assistant specializing in accurately extracting structured data from receipt images. Your task is to return a clean, valid JSON object based on the user's request, without any additional commentary or explanations.`;
 
@@ -149,7 +146,7 @@ Example of a valid response:
     if (cachedResponse) {
       return new Response(JSON.stringify({
         message: "Receipt processed successfully (cached)",
-        receiptId: receiptData.id,
+        receiptId: receiptId,
         expenses: cachedResponse.ai_response,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -195,7 +192,8 @@ Example of a valid response:
         details: openaiError?.message,
         status,
         openaiPayloadError: data,
-      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
@@ -256,7 +254,7 @@ Example of a valid response:
 
     return new Response(JSON.stringify({
       message: "Receipt processed successfully",
-      receiptId: receiptData.id,
+      receiptId: receiptId,
       expenses: validatedExpenses,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
