@@ -6,7 +6,7 @@ import { useReceiptReviewStore } from '@/store/receiptReviewStore';
 import ExpenseReviewSplitScreen from '@/components/ExpenseReviewSplitScreen';
 import { useSession } from '@/components/SessionContextProvider';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Container } from '@/components/Container';
+import { Loader2 } from 'lucide-react';
 
 // Define the type for a single expense form state
 interface ExpenseFormState {
@@ -96,7 +96,14 @@ const ReviewReceiptPage = () => {
     };
 
     if (!expenseForm) {
-        return <Container><p>Loading review data...</p></Container>;
+        return (
+            <div className="min-h-screen w-full flex items-center justify-center bg-background">
+                <div className="flex flex-col items-center space-y-2">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <p className="text-lg text-muted-foreground">Loading Review Data...</p>
+                </div>
+            </div>
+        );
     }
 
     return (
