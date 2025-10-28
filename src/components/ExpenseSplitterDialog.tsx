@@ -20,7 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid';
-import { NJESIA_OPTIONS, VAT_CODES, EXPENSE_CATEGORIES, ALL_SUBCATEGORIES, getPercentageFromVatCode } from '@/lib/constants';
+import { NJESIA_OPTIONS } from '@/lib/constants'; // Import constants
 import ReceiptViewer from './ReceiptViewer';
 
 interface ExpenseItem {
@@ -37,8 +37,8 @@ interface ExpenseItem {
   nr_fiskal: string | null;
   numri_i_tvsh_se: string | null;
   description: string | null;
-  sasia: number | null;
-  njesia: string | null;
+  sasia: number | null; // NEW FIELD
+  njesia: string | null; // NEW FIELD
 }
 
 interface InitialExpenseData {
@@ -66,6 +66,30 @@ interface ExpenseSplitterDialogProps {
   onExpensesSaved: () => void;
   isConnectedToQuickBooks: boolean;
 }
+
+const expenseCategories = {
+  "660 Shpenzime te personelit": ["660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional"],
+  "665 Shpenzimet e zyres": ["665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera"],
+  "667 Sherbimet profesionale": ["667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi"],
+  "668 Shpenzimet e udhetimit": ["668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti"],
+  "669 Shpenzimet e automjetit": ["669-01 Shpenzimet e karburantit", "669-02 Mirembajtje dhe riparim"],
+  "675 Shpenzimet e komunikimit": ["675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks"],
+  "683 Shpenzimet e sigurimit": ["683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses"],
+  "686 Komunalite": ["686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes"],
+  "690 Shpenzime tjera operative": ["690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare"],
+};
+
+const allSubcategories = Object.values(expenseCategories).flat();
+
+const vatCodes = [
+  "[31] Blerjet dhe importet pa TVSH", "[32] Blerjet dhe importet investive pa TVSH", "[33] Blerjet dhe importet me TVSH jo të zbritshme", "[34] Blerjet dhe importet investive me TVSH jo të zbritshme", "[35] Importet 18%", "[37] Importet 8%", "[39] Importet investive 18%", "[41] Importet investive 8%", "[43] Blerjet vendore 18%", "No VAT", "[45] Blerjet vendore 8%", "[47] Blerjet investive vendore 18%", "[49] Blerjet investive vendore 8%", "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%", "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
+];
+
+const getPercentageFromVatCode = (vatCode: string): number => {
+  if (vatCode === "No VAT" || vatCode.includes("pa TVSH") || vatCode.includes("jo të zbritshme")) return 0;
+  const match = vatCode.match(/(\d+)%/);
+  return match ? parseInt(match[1], 10) : 0;
+};
 
 const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   open, onOpenChange, initialExpenses, batchId, onExpensesSaved,
@@ -103,7 +127,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
     tempId: uuidv4(),
     receiptId: baseExpense?.receiptId || expenses[0]?.receiptId || 'unknown',
     name: baseExpense?.name || '',
-    category: baseExpense?.category || ALL_SUBCATEGORIES[0] || '',
+    category: baseExpense?.category || allSubcategories[0] || '',
     amount: baseExpense?.amount || 0,
     date: baseExpense?.date || new Date(),
     merchant: baseExpense?.merchant || null,
@@ -113,8 +137,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
     nr_fiskal: baseExpense?.nr_fiskal || null,
     numri_i_tvsh_se: baseExpense?.numri_i_tvsh_se || null,
     description: baseExpense?.description || null,
-    sasia: baseExpense?.sasia || 1,
-    njesia: baseExpense?.njesia || NJESIA_OPTIONS[0] || 'cope',
+    sasia: baseExpense?.sasia || 1, // Default new field
+    njesia: baseExpense?.njesia || NJESIA_OPTIONS[0] || 'cope', // Default new field
   });
 
   const handleAddExpense = () => setExpenses((prev) => [...prev, createNewEmptyExpense()]);
@@ -147,7 +171,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
   const validateExpenses = (): boolean => {
     for (const exp of expenses) {
       if (!exp.name.trim()) { showError(`Expense name is required.`); return false; }
-      if (!exp.category || !ALL_SUBCATEGORIES.includes(exp.category)) { showError(`A valid category is required.`); return false; }
+      if (!exp.category || !allSubcategories.includes(exp.category)) { showError(`A valid category is required.`); return false; }
       if (exp.amount <= 0) { showError(`Amount must be greater than 0.`); return false; }
       if (exp.sasia === null || exp.sasia <= 0) { showError(`Quantity (Sasia) must be greater than 0.`); return false; }
       if (!exp.njesia) { showError(`Unit (Njesia) is required.`); return false; }
@@ -181,8 +205,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         nr_fiskal: exp.nr_fiskal,
         numri_i_tvsh_se: exp.numri_i_tvsh_se,
         description: exp.description,
-        sasia: exp.sasia,
-        njesia: exp.njesia,
+        sasia: exp.sasia, // Insert new field
+        njesia: exp.njesia, // Insert new field
       }));
 
       const { data: insertedExpenses, error: expensesError } = await supabase
@@ -245,7 +269,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
                     <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)} value={exp.category} disabled={loading}>
                       <SelectTrigger id={`category-${exp.tempId}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
                       <SelectContent>
-                        {Object.entries(EXPENSE_CATEGORIES).map(([mainCategory, subcategories]) => (
+                        {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
                           <SelectGroup key={mainCategory}>
                             <SelectLabel>{mainCategory}</SelectLabel>
                             {subcategories.map((subCategory) => (<SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>))}
@@ -262,7 +286,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
                     <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
                     <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)} value={exp.vat_code} disabled={loading}>
                       <SelectTrigger id={`vat_code-${exp.tempId}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
-                      <SelectContent>{VAT_CODES.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
+                      <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="col-span-6 md:col-span-2">

@@ -274,8 +274,8 @@ Example of a valid response:
         nr_fiskal: expense.nr_fiskal || null,
         numri_i_tvsh_se: expense.numri_i_tvsh_se || null,
         description: expense.description || null,
-        sasia: sasia,
-        njesia: njesia,
+        sasia: sasia, // NEW FIELD
+        njesia: njesia, // NEW FIELD
       };
     });
 

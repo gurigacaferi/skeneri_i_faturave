@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ALL_SUBCATEGORIES, VAT_CODES, NJESIA_OPTIONS } from '@/lib/constants';
+import { validSubcategories, validVatCodes, validUnits } from '@/lib/constants';
 import { showError, showSuccess } from '@/utils/toast';
 import { Trash2, PlusCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
@@ -28,24 +28,15 @@ const ReceiptReviewScreen = () => {
     if (!receiptId || !supabase || !session) return;
     setIsFetching(true);
     try {
-      // 1. Fetch receipt details (including storage path)
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipts')
-        .select('storage_path')
+        .select('image_url')
         .eq('id', receiptId)
         .single();
 
       if (receiptError) throw new Error(`Receipt not found: ${receiptError.message}`);
-      if (!receiptData?.storage_path) throw new Error('Receipt storage path is missing.');
+      if (!receiptData) throw new Error('Receipt data is null.');
 
-      // 2. Get public URL
-      const { data: urlData } = supabase.storage
-        .from('receipts')
-        .getPublicUrl(receiptData.storage_path);
-
-      if (!urlData?.publicUrl) throw new Error('Could not generate public URL.');
-
-      // 3. Fetch expenses
       const { data: expensesData, error: expensesError } = await supabase
         .from('expenses')
         .select('*')
@@ -53,7 +44,7 @@ const ReceiptReviewScreen = () => {
 
       if (expensesError) throw new Error(`Failed to fetch expenses: ${expensesError.message}`);
 
-      setReviewData({ receiptId, imageUrl: urlData.publicUrl, expenses: expensesData || [] });
+      setReviewData({ receiptId, imageUrl: receiptData.image_url, expenses: expensesData || [] });
     } catch (error: any) {
       showError(error.message);
       navigate('/');
@@ -69,9 +60,12 @@ const ReceiptReviewScreen = () => {
       setIsFetching(false);
     }
 
-    // Note: Removed the cleanup function to clear data, as it was causing issues 
-    // when navigating back and forth. Data should only be cleared on successful save/exit.
-  }, [receiptId, imageUrl, fetchDataForEdit]);
+    return () => {
+      // Only clear data if we are truly navigating away, not on component updates.
+      // This logic can be improved if needed, but for now, let's clear it.
+      clearReviewData();
+    };
+  }, [receiptId, imageUrl, fetchDataForEdit, clearReviewData]);
 
   useEffect(() => {
     setEditedExpenses(expenses);
@@ -87,7 +81,7 @@ const ReceiptReviewScreen = () => {
   const addNewExpense = () => {
     const newExpense = {
       name: 'New Item',
-      category: ALL_SUBCATEGORIES[0] || '690-09 Te tjera',
+      category: '690-09 Te tjera',
       amount: 0,
       date: new Date().toISOString().split('T')[0],
       merchant: editedExpenses[0]?.merchant || '',
@@ -98,7 +92,7 @@ const ReceiptReviewScreen = () => {
       numri_i_tvsh_se: editedExpenses[0]?.numri_i_tvsh_se || null,
       description: '',
       sasia: 1,
-      njesia: NJESIA_OPTIONS[0] || 'cope',
+      njesia: 'cope',
     };
     setEditedExpenses([...editedExpenses, newExpense]);
   };
@@ -116,19 +110,12 @@ const ReceiptReviewScreen = () => {
     setIsLoading(true);
 
     try {
-      // 1. Update receipt status (optional, but good practice)
       await supabase
         .from('receipts')
         .update({ status: 'processed' })
         .eq('id', receiptId);
 
-      // 2. Delete existing expenses for this receipt
-      await supabase
-        .from('expenses')
-        .delete()
-        .eq('receipt_id', receiptId);
-      
-      // 3. Insert updated expenses
+      // Explicitly map fields to prevent inserting unwanted columns like 'id'
       const expensesToInsert = editedExpenses.map(exp => ({
         name: exp.name,
         category: exp.category,
@@ -147,6 +134,11 @@ const ReceiptReviewScreen = () => {
         user_id: session.user.id,
       }));
 
+      await supabase
+        .from('expenses')
+        .delete()
+        .eq('receipt_id', receiptId);
+      
       const { error: insertError } = await supabase
         .from('expenses')
         .insert(expensesToInsert);
@@ -220,9 +212,9 @@ const ReceiptReviewScreen = () => {
                 <div className="sm:col-span-2">
                   <Label htmlFor={`category-${index}`}>Category</Label>
                   <Select value={expense.category} onValueChange={(value) => handleInputChange(index, 'category', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectValue>
                     <SelectContent>
-                      {ALL_SUBCATEGORIES.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                      {validSubcategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -233,18 +225,18 @@ const ReceiptReviewScreen = () => {
                 <div>
                   <Label htmlFor={`njesia-${index}`}>Unit</Label>
                    <Select value={expense.njesia ?? 'cope'} onValueChange={(value) => handleInputChange(index, 'njesia', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectValue>
                     <SelectContent>
-                      {NJESIA_OPTIONS.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
+                      {validUnits.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
                   <Select value={expense.vat_code} onValueChange={(value) => handleInputChange(index, 'vat_code', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectValue>
                     <SelectContent>
-                      {VAT_CODES.map(code => <SelectItem key={code} value={code}>{code}</SelectItem>)}
+                      {validVatCodes.map(code => <SelectItem key={code} value={code}>{code}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
