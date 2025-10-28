@@ -273,7 +273,7 @@ const ReceiptReviewScreen = () => {
             <CardTitle>Receipt Image</CardTitle>
             <CardDescription>Zoom and pan to verify extracted data.</CardDescription>
           </CardHeader>
-          <CardContent className="p-4 h-[60vh] min-h-[400px]">
+          <CardContent className="p-4"> {/* Removed fixed height constraints */}
             <ReceiptViewer receiptId={receiptId} />
           </CardContent>
         </Card>
