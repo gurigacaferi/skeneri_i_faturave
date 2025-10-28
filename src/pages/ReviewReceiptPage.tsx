@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useReceiptReviewStore } from '@/store/receiptReviewStore';
 import ExpenseReviewSplitScreen from '@/components/ExpenseReviewSplitScreen';
 import { useSession } from '@/components/SessionContextProvider';
@@ -26,7 +26,7 @@ interface ExpenseFormState {
 }
 
 const ReviewReceiptPage = () => {
-    const router = useRouter();
+    const navigate = useNavigate();
     const params = useParams();
     const { supabase, session } = useSession();
     const receiptIdParam = params.receiptId as string;
@@ -34,7 +34,6 @@ const ReviewReceiptPage = () => {
     const { receiptId, imageUrl, expenses, clearReviewData } = useReceiptReviewStore();
     
     // For this implementation, we will focus on the first expense from a receipt.
-    // A more complex implementation could handle multiple expenses with a list/tab view.
     const [expenseForm, setExpenseForm] = useState<ExpenseFormState | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -42,12 +41,12 @@ const ReviewReceiptPage = () => {
         // If the store is empty (e.g., page refresh), redirect to dashboard.
         if (!receiptId || receiptId !== receiptIdParam || expenses.length === 0) {
             showError("No review data found. Please upload a receipt again.");
-            router.push('/dashboard');
+            navigate('/');
             return;
         }
         // Initialize form with the first expense
         setExpenseForm(expenses[0]);
-    }, [receiptId, receiptIdParam, expenses, router]);
+    }, [receiptId, receiptIdParam, expenses, navigate]);
 
     const handleExpenseChange = (field: keyof ExpenseFormState, value: any) => {
         setExpenseForm(prev => prev ? { ...prev, [field]: value } : null);
@@ -81,7 +80,7 @@ const ReviewReceiptPage = () => {
 
             showSuccess("Expense saved successfully!");
             clearReviewData();
-            router.push('/dashboard');
+            navigate('/');
 
         } catch (error: any) {
             showError(`Failed to save expense: ${error.message}`);
@@ -93,7 +92,7 @@ const ReviewReceiptPage = () => {
 
     const handleCancel = () => {
         clearReviewData();
-        router.push('/dashboard');
+        navigate('/');
     };
 
     if (!expenseForm) {
@@ -101,19 +100,17 @@ const ReviewReceiptPage = () => {
     }
 
     return (
-        <Container>
-            <main className="p-4">
-                <ExpenseReviewSplitScreen
-                    imageUrl={imageUrl}
-                    expenseData={expenseForm}
-                    onExpenseChange={handleExpenseChange}
-                    onSave={handleSave}
-                    onCancel={handleCancel}
-                    isSaving={isSaving}
-                    title="Review & Confirm Expense"
-                />
-            </main>
-        </Container>
+        <div className="p-4 h-screen bg-secondary/30">
+            <ExpenseReviewSplitScreen
+                imageUrl={imageUrl}
+                expenseData={expenseForm}
+                onExpenseChange={handleExpenseChange}
+                onSave={handleSave}
+                onCancel={handleCancel}
+                isSaving={isSaving}
+                title="Review & Confirm Expense"
+            />
+        </div>
     );
 };
 

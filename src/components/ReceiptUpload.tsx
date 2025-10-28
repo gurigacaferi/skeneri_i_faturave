@@ -8,7 +8,7 @@ import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useReceiptReviewStore } from '@/store/receiptReviewStore';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 
 interface ReceiptUploadProps {
   onUploadComplete: () => void;
@@ -27,7 +27,7 @@ interface UploadStatus {
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
   const { supabase, session } = useSession();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null);
   const setReviewData = useReceiptReviewStore((state) => state.setReviewData);
 
@@ -54,17 +54,14 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         throw new Error(errorData.error || 'Failed to process receipt.');
       }
 
-      const { expenses, imageUrl: processedImageUrl } = await response.json();
+      const { expenses } = await response.json();
 
       if (!expenses || expenses.length === 0) {
         throw new Error('No expenses were extracted from the receipt.');
       }
       
-      // Use the public URL from storage, not the one from the response
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(`${session.user.id}/${receiptId}.jpg`);
 
-
-      // Set data for the review page
       setReviewData({
         receiptId,
         imageUrl: publicUrl,
@@ -74,15 +71,14 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
       setUploadStatus(prev => prev ? { ...prev, status: 'success' } : null);
       showSuccess('Receipt processed! Please review the details.');
 
-      // Navigate to the review page
-      router.push(`/review-receipt/${receiptId}`);
+      navigate(`/review-receipt/${receiptId}`);
 
     } catch (error: any) {
       console.error('Error processing receipt:', error);
       setUploadStatus(prev => prev ? { ...prev, status: 'error', error: error.message } : null);
       showError(`Processing failed: ${error.message}`);
     }
-  }, [session, supabase, setReviewData, router]);
+  }, [session, supabase, setReviewData, navigate]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -100,7 +96,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     const toastId = showLoading('Uploading receipt...');
 
     try {
-      // 1. Upload image to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('receipts')
         .upload(filePath, file, {
@@ -111,7 +106,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
       if (uploadError) throw uploadError;
       dismissToast(toastId);
       
-      // 2. Create a record in the 'receipts' table
       const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(filePath);
       const { error: dbError } = await supabase
         .from('receipts')
@@ -126,7 +120,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
 
       if (dbError) throw dbError;
 
-      // 3. Convert image to Base64 and process
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onloadend = () => {
