@@ -21,6 +21,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid';
 import { NJESIA_OPTIONS } from '@/lib/constants'; // Import constants
+import ReceiptViewer from './ReceiptViewer';
 
 interface ExpenseItem {
   tempId: string;
@@ -124,7 +125,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   const createNewEmptyExpense = (baseExpense?: Partial<ExpenseItem>): ExpenseItem => ({
     tempId: uuidv4(),
-    receiptId: baseExpense?.receiptId || 'unknown',
+    receiptId: baseExpense?.receiptId || expenses[0]?.receiptId || 'unknown',
     name: baseExpense?.name || '',
     category: baseExpense?.category || allSubcategories[0] || '',
     amount: baseExpense?.amount || 0,
@@ -235,111 +236,125 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-7xl w-full max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle>Review and Split Expenses</DialogTitle>
           <DialogDescription>
             Review the extracted expenses. You can edit, add, delete, or split items before saving.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          {expenses.map((exp, index) => (
-            <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
-              <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Expense #{index + 1}
-              </div>
-              
-              {/* Row 1: Name, Category, Amount, VAT Code, Date */}
-              <div className="col-span-6 md:col-span-3">
-                <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
-                <Input id={`name-${exp.tempId}`} value={exp.name} onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)} disabled={loading} />
-              </div>
-              <div className="col-span-6 md:col-span-3">
-                <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
-                <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)} value={exp.category} disabled={loading}>
-                  <SelectTrigger id={`category-${exp.tempId}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                      <SelectGroup key={mainCategory}>
-                        <SelectLabel>{mainCategory}</SelectLabel>
-                        {subcategories.map((subCategory) => (<SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`amount-${exp.tempId}`}>Amount</Label>
-                <Input id={`amount-${exp.tempId}`} type="number" step="0.01" value={exp.amount} onChange={(e) => handleUpdateExpense(exp.tempId, 'amount', parseFloat(e.target.value) || 0)} disabled={loading} />
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
-                <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)} value={exp.vat_code} disabled={loading}>
-                  <SelectTrigger id={`vat_code-${exp.tempId}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
-                  <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`date-${exp.tempId}`}>Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !exp.date && 'text-muted-foreground')} disabled={loading}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {exp.date ? format(exp.date, 'PPP') : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar mode="single" selected={exp.date} onSelect={(date) => handleUpdateExpense(exp.tempId, 'date', date!)} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              </div>
 
-              {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se */}
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
-                <Input id={`merchant-${exp.tempId}`} value={exp.merchant || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)} disabled={loading} />
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`nui-${exp.tempId}`}>NUI</Label>
-                <Input id={`nui-${exp.tempId}`} value={exp.nui || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'nui', e.target.value || null)} disabled={loading} />
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`nr_fiskal-${exp.tempId}`}>Nr. Fiskal</Label>
-                <Input id={`nr_fiskal-${exp.tempId}`} value={exp.nr_fiskal || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'nr_fiskal', e.target.value || null)} disabled={loading} />
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`numri_i_tvsh_se-${exp.tempId}`}>Numri i TVSH-se</Label>
-                <Input id={`numri_i_tvsh_se-${exp.tempId}`} value={exp.numri_i_tvsh_se || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'numri_i_tvsh_se', e.target.value || null)} disabled={loading} />
-              </div>
-              
-              {/* Row 3: Sasia, Njesia, Description, Actions */}
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`sasia-${exp.tempId}`}>Sasia (Qty)</Label>
-                <Input id={`sasia-${exp.tempId}`} type="number" step="1" value={exp.sasia || 1} onChange={(e) => handleUpdateExpense(exp.tempId, 'sasia', parseFloat(e.target.value) || 0)} disabled={loading} />
-              </div>
-              <div className="col-span-6 md:col-span-2">
-                <Label htmlFor={`njesia-${exp.tempId}`}>Njesia (Unit)</Label>
-                <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'njesia', value)} value={exp.njesia || NJESIA_OPTIONS[0]} disabled={loading}>
-                  <SelectTrigger id={`njesia-${exp.tempId}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
-                  <SelectContent>
-                    {NJESIA_OPTIONS.map((unit) => (<SelectItem key={unit} value={unit}>{unit}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-6 md:col-span-4">
-                <Label htmlFor={`description-${exp.tempId}`}>Description</Label>
-                <Input id={`description-${exp.tempId}`} value={exp.description || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'description', e.target.value || null)} disabled={loading} />
-              </div>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+          {/* Left Column: Receipt Viewer */}
+          <aside className="lg:col-span-2 h-full hidden lg:block">
+            <ReceiptViewer receiptId={expenses[0]?.receiptId || null} />
+          </aside>
 
-              <div className="col-span-12 md:col-span-2 flex items-end justify-end space-x-2 mt-4 md:mt-0">
-                <Button variant="outline" size="icon" onClick={() => handleSplitExpense(exp.tempId)} disabled={loading} title="Split Expense"><Split className="h-4 w-4" /></Button>
-                <Button variant="destructive" size="icon" onClick={() => handleDeleteExpense(exp.tempId)} disabled={loading} title="Delete Expense"><Trash2 className="h-4 w-4" /></Button>
-              </div>
+          {/* Right Column: Expense Forms */}
+          <div className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
+            <div className="grid gap-4">
+              {expenses.map((exp, index) => (
+                <div key={exp.tempId} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
+                  <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Expense #{index + 1}
+                  </div>
+                  
+                  {/* Row 1: Name, Category, Amount, VAT Code, Date */}
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`name-${exp.tempId}`}>Name</Label>
+                    <Input id={`name-${exp.tempId}`} value={exp.name} onChange={(e) => handleUpdateExpense(exp.tempId, 'name', e.target.value)} disabled={loading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`category-${exp.tempId}`}>Category</Label>
+                    <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'category', value)} value={exp.category} disabled={loading}>
+                      <SelectTrigger id={`category-${exp.tempId}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                          <SelectGroup key={mainCategory}>
+                            <SelectLabel>{mainCategory}</SelectLabel>
+                            {subcategories.map((subCategory) => (<SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`amount-${exp.tempId}`}>Amount</Label>
+                    <Input id={`amount-${exp.tempId}`} type="number" step="0.01" value={exp.amount} onChange={(e) => handleUpdateExpense(exp.tempId, 'amount', parseFloat(e.target.value) || 0)} disabled={loading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`vat_code-${exp.tempId}`}>VAT Code</Label>
+                    <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'vat_code', value)} value={exp.vat_code} disabled={loading}>
+                      <SelectTrigger id={`vat_code-${exp.tempId}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
+                      <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`date-${exp.tempId}`}>Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !exp.date && 'text-muted-foreground')} disabled={loading}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {exp.date ? format(exp.date, 'PPP') : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar mode="single" selected={exp.date} onSelect={(date) => handleUpdateExpense(exp.tempId, 'date', date!)} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se */}
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
+                    <Input id={`merchant-${exp.tempId}`} value={exp.merchant || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)} disabled={loading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`nui-${exp.tempId}`}>NUI</Label>
+                    <Input id={`nui-${exp.tempId}`} value={exp.nui || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'nui', e.target.value || null)} disabled={loading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`nr_fiskal-${exp.tempId}`}>Nr. Fiskal</Label>
+                    <Input id={`nr_fiskal-${exp.tempId}`} value={exp.nr_fiskal || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'nr_fiskal', e.target.value || null)} disabled={loading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`numri_i_tvsh_se-${exp.tempId}`}>Numri i TVSH-se</Label>
+                    <Input id={`numri_i_tvsh_se-${exp.tempId}`} value={exp.numri_i_tvsh_se || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'numri_i_tvsh_se', e.target.value || null)} disabled={loading} />
+                  </div>
+                  
+                  {/* Row 3: Sasia, Njesia, Description, Actions */}
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`sasia-${exp.tempId}`}>Sasia (Qty)</Label>
+                    <Input id={`sasia-${exp.tempId}`} type="number" step="1" value={exp.sasia || 1} onChange={(e) => handleUpdateExpense(exp.tempId, 'sasia', parseFloat(e.target.value) || 0)} disabled={loading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`njesia-${exp.tempId}`}>Njesia (Unit)</Label>
+                    <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'njesia', value)} value={exp.njesia || NJESIA_OPTIONS[0]} disabled={loading}>
+                      <SelectTrigger id={`njesia-${exp.tempId}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
+                      <SelectContent>
+                        {NJESIA_OPTIONS.map((unit) => (<SelectItem key={unit} value={unit}>{unit}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-4">
+                    <Label htmlFor={`description-${exp.tempId}`}>Description</Label>
+                    <Input id={`description-${exp.tempId}`} value={exp.description || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'description', e.target.value || null)} disabled={loading} />
+                  </div>
+
+                  <div className="col-span-12 md:col-span-2 flex items-end justify-end space-x-2 mt-4 md:mt-0">
+                    <Button variant="outline" size="icon" onClick={() => handleSplitExpense(exp.tempId)} disabled={loading} title="Split Expense"><Split className="h-4 w-4" /></Button>
+                    <Button variant="destructive" size="icon" onClick={() => handleDeleteExpense(exp.tempId)} disabled={loading} title="Delete Expense"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+              ))}
+              <Button onClick={handleAddExpense} variant="secondary" className="mt-4" disabled={loading}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
+              </Button>
             </div>
-          ))}
-          <Button onClick={handleAddExpense} variant="secondary" className="mt-4" disabled={loading}><PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item</Button>
+          </div>
         </div>
-        <DialogFooter>
+
+        <DialogFooter className="p-6 border-t bg-background">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
           <Button onClick={handleSaveAllExpenses} disabled={loading}>
             {loading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>) : ('Save All Expenses')}
