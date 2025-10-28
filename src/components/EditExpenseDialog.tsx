@@ -97,7 +97,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
   expense,
   onExpenseUpdated,
 }) => {
-  const { session } = useSession();
+  const { session, supabase } = useSession();
   const [loading, setLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -156,7 +156,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
     const toastId = showLoading('Updating expense...');
 
     try {
-      const { error } = await session.supabase
+      const { error } = await supabase
         .from('expenses')
         .update({
           name: values.name,
