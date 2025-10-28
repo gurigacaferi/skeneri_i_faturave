@@ -55,12 +55,28 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         body: JSON.stringify({ base64Image, receiptId, batchId: selectedBatchId }),
       });
 
+      // Read response as text first for robust error handling
+      const responseText = await response.text();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to process receipt.');
+        let errorDetails = 'Failed to process receipt.';
+        try {
+          const errorData = JSON.parse(responseText);
+          errorDetails = errorData.error || errorDetails;
+        } catch {
+          errorDetails = `Server returned non-JSON error: ${responseText.substring(0, 100)}...`;
+        }
+        throw new Error(errorDetails);
       }
 
-      const { expenses } = await response.json();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        throw new Error('Server returned invalid JSON response.');
+      }
+      
+      const { expenses } = responseData;
 
       if (!expenses || expenses.length === 0) {
         throw new Error('No expenses were extracted from the receipt.');
@@ -111,7 +127,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
       if (uploadError) throw uploadError;
       
-      // 2. Insert receipt record into the database (FIX: Removed public_url insertion)
+      // 2. Insert receipt record into the database
       const { error: dbError } = await supabase
         .from('receipts')
         .insert({
@@ -121,7 +137,9 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           filename: file.name,
           status: 'uploaded',
           batch_id: selectedBatchId, // Ensure batch ID is saved
-        });
+        })
+        .select()
+        .single(); // Use select().single() to ensure the operation completes
 
       if (dbError) throw dbError;
       
