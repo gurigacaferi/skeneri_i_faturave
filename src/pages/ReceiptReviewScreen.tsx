@@ -26,7 +26,6 @@ const ReceiptReviewScreen = () => {
 
   const fetchDataForEdit = useCallback(async () => {
     if (!receiptId || !supabase || !session) return;
-    console.log(`Fetching data for receipt ID: ${receiptId}`);
     setIsFetching(true);
     try {
       const { data: receiptData, error: receiptError } = await supabase
@@ -45,8 +44,7 @@ const ReceiptReviewScreen = () => {
 
       if (expensesError) throw new Error(`Failed to fetch expenses: ${expensesError.message}`);
 
-      // Populate the store with the fetched data
-      setReviewData({ imageUrl: receiptData.image_url, expenses: expensesData || [] });
+      setReviewData({ receiptId, imageUrl: receiptData.image_url, expenses: expensesData || [] });
     } catch (error: any) {
       showError(error.message);
       navigate('/');
@@ -56,24 +54,20 @@ const ReceiptReviewScreen = () => {
   }, [receiptId, supabase, session, navigate, setReviewData]);
 
   useEffect(() => {
-    // If the component mounts and the store's data doesn't match the current receiptId,
-    // it means we're in "edit" mode and need to fetch data.
     if (!imageUrl || useReceiptReviewStore.getState().receiptId !== receiptId) {
       fetchDataForEdit();
     } else {
-      // Data is already in the store (from the upload/scan flow)
       setIsFetching(false);
     }
 
-    // Cleanup store on unmount
     return () => {
+      // Only clear data if we are truly navigating away, not on component updates.
+      // This logic can be improved if needed, but for now, let's clear it.
       clearReviewData();
     };
   }, [receiptId, imageUrl, fetchDataForEdit, clearReviewData]);
 
   useEffect(() => {
-    // When the expenses from the store change (either from initial load or fetch),
-    // update the local state for editing.
     setEditedExpenses(expenses);
   }, [expenses]);
 
@@ -108,7 +102,7 @@ const ReceiptReviewScreen = () => {
     setEditedExpenses(updatedExpenses);
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!supabase || !session || !receiptId) {
       showError("You must be logged in to save changes.");
       return;
@@ -121,8 +115,21 @@ const ReceiptReviewScreen = () => {
         .update({ status: 'processed' })
         .eq('id', receiptId);
 
+      // Explicitly map fields to prevent inserting unwanted columns like 'id'
       const expensesToInsert = editedExpenses.map(exp => ({
-        ...exp,
+        name: exp.name,
+        category: exp.category,
+        amount: exp.amount,
+        date: exp.date,
+        merchant: exp.merchant,
+        vat_code: exp.vat_code,
+        tvsh_percentage: exp.tvsh_percentage,
+        nui: exp.nui,
+        nr_fiskal: exp.nr_fiskal,
+        numri_i_tvsh_se: exp.numri_i_tvsh_se,
+        description: exp.description,
+        sasia: exp.sasia,
+        njesia: exp.njesia,
         receipt_id: receiptId,
         user_id: session.user.id,
       }));
@@ -146,7 +153,7 @@ const ReceiptReviewScreen = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase, session, receiptId, editedExpenses, navigate]);
 
   if (isFetching) {
     return <div className="text-center p-8">Loading receipt details...</div>;
@@ -205,7 +212,7 @@ const ReceiptReviewScreen = () => {
                 <div className="sm:col-span-2">
                   <Label htmlFor={`category-${index}`}>Category</Label>
                   <Select value={expense.category} onValueChange={(value) => handleInputChange(index, 'category', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectValue>
                     <SelectContent>
                       {validSubcategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                     </SelectContent>
@@ -218,7 +225,7 @@ const ReceiptReviewScreen = () => {
                 <div>
                   <Label htmlFor={`njesia-${index}`}>Unit</Label>
                    <Select value={expense.njesia ?? 'cope'} onValueChange={(value) => handleInputChange(index, 'njesia', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectValue>
                     <SelectContent>
                       {validUnits.map(unit => <SelectItem key={unit} value={unit}>{unit}</SelectItem>)}
                     </SelectContent>
@@ -227,7 +234,7 @@ const ReceiptReviewScreen = () => {
                 <div className="sm:col-span-2">
                   <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
                   <Select value={expense.vat_code} onValueChange={(value) => handleInputChange(index, 'vat_code', value)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectValue>
                     <SelectContent>
                       {validVatCodes.map(code => <SelectItem key={code} value={code}>{code}</SelectItem>)}
                     </SelectContent>
@@ -244,7 +251,7 @@ const ReceiptReviewScreen = () => {
         <div className="mt-6 flex justify-end gap-4">
             <Button variant="outline" onClick={() => navigate('/')}>Cancel</Button>
             <Button onClick={handleSave} disabled={isLoading}>
-              {isLoading ? 'Saving...' : 'Saving...'}
+              {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
         </div>
       </div>
