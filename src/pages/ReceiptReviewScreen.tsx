@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { useReceiptReviewStore } from '@/store/receiptReviewStore';
@@ -19,17 +19,63 @@ const ReceiptReviewScreen = () => {
   const navigate = useNavigate();
   const { supabase, session } = useSession();
 
-  const { imageUrl, expenses, clearReviewData } = useReceiptReviewStore();
+  const { imageUrl, expenses, setReviewData, clearReviewData } = useReceiptReviewStore();
   const [editedExpenses, setEditedExpenses] = useState(expenses);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
+
+  const fetchDataForEdit = useCallback(async () => {
+    if (!receiptId || !supabase || !session) return;
+    console.log(`Fetching data for receipt ID: ${receiptId}`);
+    setIsFetching(true);
+    try {
+      const { data: receiptData, error: receiptError } = await supabase
+        .from('receipts')
+        .select('image_url')
+        .eq('id', receiptId)
+        .single();
+
+      if (receiptError) throw new Error(`Receipt not found: ${receiptError.message}`);
+      if (!receiptData) throw new Error('Receipt data is null.');
+
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('receipt_id', receiptId);
+
+      if (expensesError) throw new Error(`Failed to fetch expenses: ${expensesError.message}`);
+
+      // Populate the store with the fetched data
+      setReviewData({ imageUrl: receiptData.image_url, expenses: expensesData || [] });
+    } catch (error: any) {
+      showError(error.message);
+      navigate('/');
+    } finally {
+      setIsFetching(false);
+    }
+  }, [receiptId, supabase, session, navigate, setReviewData]);
 
   useEffect(() => {
-    if (!imageUrl || !receiptId) {
-      console.warn("No review data found in store, redirecting.");
-      navigate('/');
+    // If the component mounts and the store's data doesn't match the current receiptId,
+    // it means we're in "edit" mode and need to fetch data.
+    if (!imageUrl || useReceiptReviewStore.getState().receiptId !== receiptId) {
+      fetchDataForEdit();
+    } else {
+      // Data is already in the store (from the upload/scan flow)
+      setIsFetching(false);
     }
+
+    // Cleanup store on unmount
+    return () => {
+      clearReviewData();
+    };
+  }, [receiptId, imageUrl, fetchDataForEdit, clearReviewData]);
+
+  useEffect(() => {
+    // When the expenses from the store change (either from initial load or fetch),
+    // update the local state for editing.
     setEditedExpenses(expenses);
-  }, [expenses, imageUrl, receiptId, navigate]);
+  }, [expenses]);
 
   const handleInputChange = (index: number, field: string, value: string | number) => {
     const updatedExpenses = [...editedExpenses];
@@ -93,7 +139,6 @@ const ReceiptReviewScreen = () => {
       if (insertError) throw insertError;
 
       showSuccess("Expenses saved successfully!");
-      clearReviewData();
       navigate('/');
     } catch (error: any) {
       console.error("Error saving expenses:", error);
@@ -103,8 +148,8 @@ const ReceiptReviewScreen = () => {
     }
   };
 
-  if (!imageUrl) {
-    return <div className="text-center p-8">Loading receipt data...</div>;
+  if (isFetching) {
+    return <div className="text-center p-8">Loading receipt details...</div>;
   }
 
   return (
@@ -199,7 +244,7 @@ const ReceiptReviewScreen = () => {
         <div className="mt-6 flex justify-end gap-4">
             <Button variant="outline" onClick={() => navigate('/')}>Cancel</Button>
             <Button onClick={handleSave} disabled={isLoading}>
-              {isLoading ? 'Saving...' : 'Save Expenses'}
+              {isLoading ? 'Saving...' : 'Saving...'}
             </Button>
         </div>
       </div>

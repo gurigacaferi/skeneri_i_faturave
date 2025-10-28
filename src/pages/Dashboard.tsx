@@ -1,110 +1,133 @@
-import React, { useState, useEffect, useCallback } from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../supabaseClient';
-import TransactionList from '../components/TransactionList';
-import SummaryCards from '../components/SummaryCards';
-import { Transaction, Profile } from '../types';
-import { calculateSummary } from '../utils/summaryCalculator';
+import { useSession } from '@/components/SessionContextProvider';
+import { FileUploader } from '@/components/FileUploader';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { showError } from '@/utils/toast';
+import { format } from 'date-fns';
 
-const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+interface Receipt {
+  id: string;
+  created_at: string;
+  status: 'processing' | 'processed' | 'failed';
+  user_id: string;
+  image_url: string;
+  // This will be populated by a join
+  expenses: { merchant: string | null, amount: number }[];
+}
+
+const Dashboard = () => {
+  const { supabase, session } = useSession();
   const navigate = useNavigate();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState({ income: 0, expenses: 0, balance: 0 });
-
-  const fetchProfile = useCallback(async () => {
-    if (!user) return;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching profile:', error);
-    } else {
-      setProfile(data);
-    }
-  }, [user]);
-
-  const fetchTransactions = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching transactions:', error);
-    } else {
-      setTransactions(data || []);
-      setSummary(calculateSummary(data || []));
-    }
-    setLoading(false);
-  }, [user]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      fetchProfile();
-      fetchTransactions();
-    } else {
-      navigate('/login');
-    }
-  }, [user, navigate, fetchProfile, fetchTransactions]);
+    const fetchReceipts = async () => {
+      if (!supabase || !session) return;
+      setIsLoading(true);
+      try {
+        // Fetch receipts and their related expenses in one go
+        const { data, error } = await supabase
+          .from('receipts')
+          .select(`
+            id,
+            created_at,
+            status,
+            image_url,
+            expenses ( merchant, amount )
+          `)
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
 
-  const handleDeleteTransaction = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) {
-      return;
-    }
+        if (error) throw error;
+        setReceipts(data as Receipt[]);
+      } catch (error: any) {
+        showError('Failed to fetch receipts: ' + error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    const { error } = await supabase
-      .from('transactions')
-      .delete()
-      .eq('id', id);
+    fetchReceipts();
+  }, [supabase, session]);
 
-    if (error) {
-      console.error('Error deleting transaction:', error);
-      alert('Failed to delete transaction.');
-    } else {
-      // FIX: Update local state immediately by filtering out the deleted transaction
-      setTransactions(prevTransactions => {
-        const newTransactions = prevTransactions.filter(t => t.id !== id);
-        setSummary(calculateSummary(newTransactions)); // Recalculate summary
-        return newTransactions;
-      });
-    }
+  const handleEdit = (receiptId: string) => {
+    navigate(`/review-receipt/${receiptId}`);
   };
 
-  if (loading) {
-    return <div className="text-center p-8">Loading dashboard...</div>;
-  }
+  const getMerchantName = (receipt: Receipt) => {
+    if (receipt.expenses && receipt.expenses.length > 0) {
+      // Return the first non-null merchant name
+      return receipt.expenses.find(e => e.merchant)?.merchant || 'N/A';
+    }
+    return 'N/A';
+  };
+
+  const getTotalAmount = (receipt: Receipt) => {
+    if (receipt.expenses && receipt.expenses.length > 0) {
+      return receipt.expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0).toFixed(2);
+    }
+    return '0.00';
+  };
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
-      
-      <SummaryCards summary={summary} />
-
-      <div className="mt-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-semibold">Recent Transactions</h2>
-          <button
-            onClick={() => navigate('/add-transaction')}
-            className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition duration-150"
-          >
-            Add Transaction
-          </button>
-        </div>
-        <TransactionList 
-          transactions={transactions} 
-          onDelete={handleDeleteTransaction} 
-        />
+    <div className="container mx-auto p-4 md:p-8">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <h1 className="text-3xl font-bold">Dashboard</h1>
+        <FileUploader />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>My Receipts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p>Loading receipts...</p>
+          ) : receipts.length === 0 ? (
+            <p>You have no receipts yet. Upload one to get started!</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Merchant</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {receipts.map((receipt) => (
+                  <TableRow key={receipt.id}>
+                    <TableCell>{format(new Date(receipt.created_at), 'PP')}</TableCell>
+                    <TableCell>{getMerchantName(receipt)}</TableCell>
+                    <TableCell>${getTotalAmount(receipt)}</TableCell>
+                    <TableCell>
+                      <Badge variant={receipt.status === 'processed' ? 'default' : 'secondary'}>
+                        {receipt.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {receipt.status === 'processed' && (
+                         <Button variant="outline" size="sm" onClick={() => handleEdit(receipt.id)}>
+                           Edit
+                         </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
