@@ -11,7 +11,8 @@ import { useReceiptReviewStore } from '@/store/receiptReviewStore';
 import { useNavigate } from 'react-router-dom';
 
 interface ReceiptUploadProps {
-  onUploadComplete: () => void;
+  onReceiptProcessed: () => void;
+  selectedBatchId: string | null;
 }
 
 interface UploadedFile extends File {
@@ -25,7 +26,7 @@ interface UploadStatus {
   error?: string;
 }
 
-const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
+const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
   const { supabase, session } = useSession();
   const navigate = useNavigate();
   const [uploadStatus, setUploadStatus] = useState<UploadStatus | null>(null);
@@ -40,13 +41,18 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     setUploadStatus(prev => prev ? { ...prev, status: 'processing' } : null);
 
     try {
+      // 1. Get public URL for the image (needed for the review screen)
+      const filePath = `${session.user.id}/${receiptId}.jpg`;
+      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(filePath);
+
+      // 2. Call Edge Function for AI processing
       const response = await fetch('/api/process-receipt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ base64Image, receiptId }),
+        body: JSON.stringify({ base64Image, receiptId, batchId: selectedBatchId }),
       });
 
       if (!response.ok) {
@@ -60,8 +66,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         throw new Error('No expenses were extracted from the receipt.');
       }
       
-      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(`${session.user.id}/${receiptId}.jpg`);
-
+      // 3. Store data in Zustand and navigate
       setReviewData({
         receiptId,
         imageUrl: publicUrl,
@@ -78,7 +83,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
       setUploadStatus(prev => prev ? { ...prev, status: 'error', error: error.message } : null);
       showError(`Processing failed: ${error.message}`);
     }
-  }, [session, supabase, setReviewData, navigate]);
+  }, [session, supabase, setReviewData, navigate, selectedBatchId]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -96,6 +101,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     const toastId = showLoading('Uploading receipt...');
 
     try {
+      // 1. Upload file to Storage
       const { error: uploadError } = await supabase.storage
         .from('receipts')
         .upload(filePath, file, {
@@ -104,22 +110,22 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
         });
 
       if (uploadError) throw uploadError;
-      dismissToast(toastId);
       
-      const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(filePath);
+      // 2. Insert receipt record into the database (FIX: Removed public_url insertion)
       const { error: dbError } = await supabase
         .from('receipts')
         .insert({
           id: receiptId,
           user_id: session.user.id,
           storage_path: filePath,
-          public_url: publicUrl,
           filename: file.name,
           status: 'uploaded',
+          batch_id: selectedBatchId, // Ensure batch ID is saved
         });
 
       if (dbError) throw dbError;
-
+      
+      // 3. Read file as Base64 for AI processing
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onloadend = () => {
@@ -136,12 +142,13 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
       setUploadStatus(prev => prev ? { ...prev, status: 'error', error: error.message } : null);
       showError(`Upload failed: ${error.message}`);
     }
-  }, [supabase, session, handleProcessReceipt]);
+  }, [supabase, session, handleProcessReceipt, selectedBatchId]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'image/*': ['.jpeg', '.png', '.jpg'] },
     multiple: false,
+    disabled: !!uploadStatus && uploadStatus.status !== 'error',
   });
 
   const clearUpload = () => {
@@ -151,12 +158,15 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
     setUploadStatus(null);
   };
 
+  // UI Reversion: Only show the status box if an upload is in progress or failed.
+  const showStatusBox = !!uploadStatus && uploadStatus.status !== 'success';
+
   return (
-    <div className="w-full">
-      {!uploadStatus ? (
+    <div className="w-full max-w-3xl mx-auto">
+      {!showStatusBox ? (
         <div
           {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+          className={`border-2 border-dashed rounded-lg p-16 text-center cursor-pointer transition-colors
             ${isDragActive ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
         >
           <input {...getInputProps()} />
@@ -167,14 +177,13 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadComplete }) => {
           </div>
         </div>
       ) : (
-        <div className="border rounded-lg p-4 flex items-center gap-4 relative">
+        <div className="border rounded-lg p-4 flex items-center gap-4 relative bg-card shadow-lg">
           <img src={uploadStatus.file.preview} alt="Receipt preview" className="w-20 h-20 rounded-md object-cover" />
           <div className="flex-grow">
             <p className="font-semibold truncate">{uploadStatus.file.name}</p>
             <div className="flex items-center gap-2 mt-1">
               {uploadStatus.status === 'uploading' && <Loader2 className="w-4 h-4 animate-spin" />}
               {uploadStatus.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-              {uploadStatus.status === 'success' && <FileCheck2 className="w-4 h-4 text-green-500" />}
               {uploadStatus.status === 'error' && <AlertTriangle className="w-4 h-4 text-destructive" />}
               <span className="text-sm capitalize text-foreground/80">{uploadStatus.status}</span>
             </div>
