@@ -35,12 +35,42 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
         return;
       }
 
-      const { data: urlData } = supabase.storage
+      const storagePath = receipt.storage_path;
+      let finalUrl: string | null = null;
+
+      // 1. Try to get the public URL
+      const { data: publicUrlData } = supabase.storage
         .from('receipts')
-        .getPublicUrl(receipt.storage_path);
+        .getPublicUrl(storagePath);
       
-      if (urlData?.publicUrl) {
-        setImageUrl(urlData.publicUrl);
+      if (publicUrlData?.publicUrl) {
+        // 2. Check if the public URL is accessible (prevents 404 if bucket is private)
+        try {
+          // Use HEAD request to check accessibility without downloading the full image
+          const testResponse = await fetch(publicUrlData.publicUrl, { method: 'HEAD' });
+          if (testResponse.ok) {
+            finalUrl = publicUrlData.publicUrl;
+          }
+        } catch (e) {
+          // Ignore network errors during HEAD request, proceed to signed URL fallback
+          console.warn('Public URL check failed, falling back to signed URL.');
+        }
+      }
+
+      // 3. If public URL failed, generate a signed URL
+      if (!finalUrl) {
+        const { data: signedUrlData, error: signedError } = await supabase.storage
+          .from('receipts')
+          .createSignedUrl(storagePath, 3600); // 1 hour expiration
+
+        if (signedError) {
+          console.error('Failed to generate signed URL:', signedError.message);
+        }
+        finalUrl = signedUrlData?.signedUrl ?? null;
+      }
+
+      if (finalUrl) {
+        setImageUrl(finalUrl);
       }
       setLoading(false);
     };
