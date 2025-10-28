@@ -49,6 +49,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
         
         if (urlData?.publicUrl) {
           setImageUrl(urlData.publicUrl);
+          // CRITICAL DEBUGGING STEP: Log the URL so the user can check it manually
+          console.log('Generated Receipt Image URL:', urlData.publicUrl);
         } else {
           setError('Could not generate public URL.');
         }
