@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useSession } from '@/components/SessionContextProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent } from '@/components/ui/card'; // ADDED
+import { Label } from '@/components/ui/label'; // ADDED
 import { Loader2, UploadCloud } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { v4 as uuidv4 } from 'uuid';
