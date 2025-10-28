@@ -1,34 +1,49 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import Login from "./pages/Login"; // Import the new Login page
-import AdminPage from "./pages/Admin"; // Import the new Admin page
-import { SessionContextProvider } from "./components/SessionContextProvider"; // Import the new context provider
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import SessionContextProvider from './components/SessionContextProvider';
+import Auth from './pages/Auth';
+import Dashboard from './pages/Dashboard';
+import Header from './components/Header';
+import ReceiptReviewScreen from './pages/ReceiptReviewScreen'; // Import the new screen
 
-const queryClient = new QueryClient();
+function App() {
+  return (
+    <Router>
+      <SessionContextProvider>
+        <div className="flex flex-col h-screen bg-background text-foreground">
+          <Header />
+          <main className="flex-grow">
+            <Routes>
+              <Route path="/login" element={<Auth />} />
+              <Route
+                path="/"
+                element={
+                  <PrivateRoute>
+                    <Dashboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/review-receipt/:receiptId"
+                element={
+                  <PrivateRoute>
+                    <ReceiptReviewScreen />
+                  </PrivateRoute>
+                }
+              />
+            </Routes>
+          </main>
+        </div>
+      </SessionContextProvider>
+    </Router>
+  );
+}
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <SessionContextProvider> {/* Wrap routes with SessionContextProvider */}
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} /> {/* Add the Login route */}
-            <Route path="/admin" element={<AdminPage />} /> {/* Add the Admin route */}
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </SessionContextProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const PrivateRoute = ({ children }: { children: JSX.Element }) => {
+  // In a real app, you'd have a more robust auth check
+  // For now, we'll just check if there's a session in a context or similar
+  // This is a placeholder for the logic you'd use with your auth provider
+  const accessToken = localStorage.getItem('supabase.auth.token'); // Example check
+  return accessToken ? children : <Navigate to="/login" />;
+};
 
 export default App;
