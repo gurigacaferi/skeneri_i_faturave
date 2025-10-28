@@ -49,6 +49,7 @@ interface Expense {
   description: string | null;
   sasia: number | null; // NEW FIELD
   njesia: string | null; // NEW FIELD
+  receipt_id: string | null; // ADDED FIELD
 }
 
 interface ExpensesListProps {
@@ -84,7 +85,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Determine which columns to fetch from the database
-  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia';
+  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia, receipt_id';
 
   // Effect for fetching data, now depends on debounced values
   useEffect(() => {
