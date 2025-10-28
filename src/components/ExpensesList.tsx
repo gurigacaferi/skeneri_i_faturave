@@ -26,12 +26,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import EditExpenseDialog from './EditExpenseDialog';
 import { DateRangeFilter } from './DateRangeFilter';
 import { exportExpensesToCsv, DEFAULT_EXPORT_COLUMNS } from '@/utils/exportToCsv';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Checkbox } from '@/components/ui/checkbox';
 import ExportSettingsModal from './ExportSettingsModal';
+import { useNavigate } from 'react-router-dom';
 
 interface Expense {
   id: string;
@@ -47,8 +47,8 @@ interface Expense {
   nr_fiskal: string | null;
   numri_i_tvsh_se: string | null;
   description: string | null;
-  sasia: number | null; // NEW FIELD
-  njesia: string | null; // NEW FIELD
+  sasia: number | null;
+  njesia: string | null;
 }
 
 interface ExpensesListProps {
@@ -57,18 +57,15 @@ interface ExpensesListProps {
 
 const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const { supabase, session, profile, refreshProfile } = useSession();
+  const navigate = useNavigate();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   
-  // State for selection
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
 
-  // State for filter inputs (updates immediately)
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined; label: string }>({
     from: undefined,
     to: undefined,
@@ -78,15 +75,12 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [maxAmount, setMaxAmount] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Debounced values for API calls (update after 500ms of inactivity)
   const debouncedMinAmount = useDebounce(minAmount, 500);
   const debouncedMaxAmount = useDebounce(maxAmount, 500);
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
-  // Determine which columns to fetch from the database
   const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia';
 
-  // Effect for fetching data, now depends on debounced values
   useEffect(() => {
     const fetchExpenses = async () => {
       if (!session) return;
@@ -97,19 +91,10 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
         .select(selectColumns)
         .eq('user_id', session.user.id);
 
-      // Apply filters using debounced values
-      if (dateRange.from) {
-        query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
-      }
-      if (dateRange.to) {
-        query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
-      }
-      if (debouncedMinAmount) {
-        query = query.gte('amount', parseFloat(debouncedMinAmount));
-      }
-      if (debouncedMaxAmount) {
-        query = query.lte('amount', parseFloat(debouncedMaxAmount));
-      }
+      if (dateRange.from) query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
+      if (dateRange.to) query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
+      if (debouncedMinAmount) query = query.gte('amount', parseFloat(debouncedMinAmount));
+      if (debouncedMaxAmount) query = query.lte('amount', parseFloat(debouncedMaxAmount));
       if (debouncedSearchTerm) {
         const searchLower = `%${debouncedSearchTerm.toLowerCase()}%`;
         query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
@@ -121,22 +106,13 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
         showError('Failed to fetch expenses: ' + error.message);
       } else {
         setExpenses(data || []);
-        // Clear selection when data refreshes
         setSelectedExpenseIds(new Set());
       }
       setLoading(false);
     };
 
     fetchExpenses();
-  }, [
-    session,
-    supabase,
-    dateRange,
-    debouncedMinAmount,
-    debouncedMaxAmount,
-    debouncedSearchTerm,
-    refreshTrigger,
-  ]);
+  }, [session, supabase, dateRange, debouncedMinAmount, debouncedMaxAmount, debouncedSearchTerm, refreshTrigger]);
 
   const handleClearFilters = () => {
     setDateRange({ from: undefined, to: undefined, label: "custom" });
@@ -153,7 +129,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
       const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
       if (error) throw new Error(error.message);
       
-      // INSTANT UI UPDATE: Remove the expense from the local state
       setExpenses(prevExpenses => prevExpenses.filter(exp => exp.id !== expenseId));
       setSelectedExpenseIds(prevIds => {
         const newSet = new Set(prevIds);
@@ -177,20 +152,11 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     const toastId = showLoading(`Deleting ${idsToDelete.length} expenses...`);
 
     try {
-      // Use the .in() filter for efficient bulk deletion
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .in('id', idsToDelete);
-
+      const { error } = await supabase.from('expenses').delete().in('id', idsToDelete);
       if (error) throw new Error(error.message);
 
-      // Update local state: filter out all deleted IDs
       setExpenses(prevExpenses => prevExpenses.filter(exp => !selectedExpenseIds.has(exp.id)));
-      
-      // Clear the selection
       setSelectedExpenseIds(new Set());
-
       showSuccess(`${idsToDelete.length} expenses deleted successfully!`);
     } catch (error: any) {
       showError('Failed to delete selected expenses: ' + error.message);
@@ -200,11 +166,9 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   };
 
   const handleEditClick = (expense: Expense) => {
-    setCurrentExpenseToEdit(expense);
-    setIsEditDialogOpen(true);
+    navigate(`/expense/${expense.id}/edit`);
   };
 
-  // Get the user's preferred columns, or use the default list
   const getExportColumns = () => {
     return profile?.csv_export_columns && profile.csv_export_columns.length > 0
       ? profile.csv_export_columns
@@ -218,10 +182,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     }
     setIsExporting(true);
     const fileName = `Filtered_Expenses_${dateRange.label.replace(/\s/g, '_')}_${format(new Date(), 'yyyyMMdd')}`;
-    
-    const columns = getExportColumns();
-    exportExpensesToCsv(expenses, fileName, columns);
-    
+    exportExpensesToCsv(expenses, fileName, getExportColumns());
     showSuccess('Filtered expenses exported successfully!');
     setIsExporting(false);
   };
@@ -229,11 +190,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const handleToggleSelect = (expenseId: string) => {
     setSelectedExpenseIds(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(expenseId)) {
-        newSet.delete(expenseId);
-      } else {
-        newSet.add(expenseId);
-      }
+      if (newSet.has(expenseId)) newSet.delete(expenseId);
+      else newSet.add(expenseId);
       return newSet;
     });
   };
@@ -255,10 +213,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     setIsExporting(true);
     const selectedExpenses = expenses.filter(exp => selectedExpenseIds.has(exp.id));
     const fileName = `Selected_Expenses_${format(new Date(), 'yyyyMMdd_HHmmss')}`;
-    
-    const columns = getExportColumns();
-    exportExpensesToCsv(selectedExpenses, fileName, columns);
-    
+    exportExpensesToCsv(selectedExpenses, fileName, getExportColumns());
     showSuccess(`${selectedExpenses.length} expenses exported successfully!`);
     setIsExporting(false);
   };
@@ -291,50 +246,22 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             </div>
             <div className="col-span-full sm:col-span-2 md:col-span-1">
               <Label htmlFor="min-amount">Min Amount</Label>
-              <Input
-                id="min-amount"
-                type="number"
-                step="0.01"
-                value={minAmount}
-                onChange={(e) => setMinAmount(e.target.value)}
-                placeholder="e.g., 10.00"
-              />
+              <Input id="min-amount" type="number" step="0.01" value={minAmount} onChange={(e) => setMinAmount(e.target.value)} placeholder="e.g., 10.00" />
             </div>
             <div className="col-span-full sm:col-span-2 md:col-span-1">
               <Label htmlFor="max-amount">Max Amount</Label>
-              <Input
-                id="max-amount"
-                type="number"
-                step="0.01"
-                value={maxAmount}
-                onChange={(e) => setMaxAmount(e.target.value)}
-                placeholder="e.g., 100.00"
-              />
+              <Input id="max-amount" type="number" step="0.01" value={maxAmount} onChange={(e) => setMaxAmount(e.target.value)} placeholder="e.g., 100.00" />
             </div>
             <div className="col-span-full sm:col-span-2 md:col-span-1">
               <Label htmlFor="search-term">Search</Label>
-              <Input
-                id="search-term"
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Name, merchant, category..."
-              />
+              <Input id="search-term" type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Name, merchant, category..." />
             </div>
             <div className="col-span-full flex justify-end gap-2 mt-2">
-              <Button variant="outline" onClick={handleClearFilters}>
-                Clear Filters
-              </Button>
-              
-              {/* Bulk Delete Button */}
+              <Button variant="outline" onClick={handleClearFilters}>Clear Filters</Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button 
-                    variant="destructive" 
-                    disabled={selectedExpenseIds.size === 0}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" /> 
-                    Delete Selected ({selectedExpenseIds.size})
+                  <Button variant="destructive" disabled={selectedExpenseIds.size === 0}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete Selected ({selectedExpenseIds.size})
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>
@@ -346,26 +273,14 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                      onClick={handleBulkDeleteExpenses}
-                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                    >
+                    <AlertDialogAction onClick={handleBulkDeleteExpenses} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
                       Yes, Delete All
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-
-              <Button 
-                onClick={handleExportSelectedExpenses} 
-                disabled={isExporting || selectedExpenseIds.size === 0}
-                variant="default"
-              >
-                {isExporting ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</>
-                ) : (
-                  <><Download className="mr-2 h-4 w-4" /> Export Selected ({selectedExpenseIds.size})</>
-                )}
+              <Button onClick={handleExportSelectedExpenses} disabled={isExporting || selectedExpenseIds.size === 0} variant="default">
+                {isExporting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Exporting...</> : <><Download className="mr-2 h-4 w-4" /> Export Selected ({selectedExpenseIds.size})</>}
               </Button>
               <Button onClick={handleExportFilteredExpenses} disabled={isExporting || expenses.length === 0} variant="secondary">
                 <Download className="mr-2 h-4 w-4" /> Export All Filtered
@@ -388,19 +303,14 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                 <TableHeader>
                   <TableRow className="bg-secondary/50 hover:bg-secondary/50">
                     <TableHead className="py-3 px-4 w-[50px] text-center">
-                      <Checkbox
-                        checked={isAllSelected}
-                        onCheckedChange={handleToggleSelectAll}
-                        aria-label="Select all"
-                        className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''}
-                      />
+                      <Checkbox checked={isAllSelected} onCheckedChange={handleToggleSelectAll} aria-label="Select all" className={isIndeterminate ? 'border-primary bg-primary text-primary-foreground' : ''} />
                     </TableHead>
                     <TableHead className="py-3 px-4">Date</TableHead>
                     <TableHead className="py-3 px-4">Merchant</TableHead>
                     <TableHead className="py-3 px-4">Item</TableHead>
                     <TableHead className="py-3 px-4">Category</TableHead>
-                    <TableHead className="py-3 px-4">Sasia</TableHead> {/* NEW HEADER */}
-                    <TableHead className="py-3 px-4">Njesia</TableHead> {/* NEW HEADER */}
+                    <TableHead className="py-3 px-4">Sasia</TableHead>
+                    <TableHead className="py-3 px-4">Njesia</TableHead>
                     <TableHead className="text-right py-3 px-4">Amount</TableHead>
                     <TableHead className="text-right py-3 px-4">VAT Code</TableHead>
                     <TableHead className="text-center py-3 px-4">Actions</TableHead>
@@ -410,28 +320,19 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                   {expenses.map((expense, index) => (
                     <TableRow key={expense.id} className={`transition-colors hover:bg-accent ${index % 2 !== 0 ? 'bg-secondary/30' : 'bg-transparent'}`}>
                       <TableCell className="py-3 px-4 w-[50px] text-center">
-                        <Checkbox
-                          checked={selectedExpenseIds.has(expense.id)}
-                          onCheckedChange={() => handleToggleSelect(expense.id)}
-                          aria-label={`Select expense ${expense.name}`}
-                        />
+                        <Checkbox checked={selectedExpenseIds.has(expense.id)} onCheckedChange={() => handleToggleSelect(expense.id)} aria-label={`Select expense ${expense.name}`} />
                       </TableCell>
                       <TableCell className="py-3 px-4">{format(new Date(expense.date), 'MMM dd, yyyy')}</TableCell>
                       <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
                       <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
-                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell> {/* NEW CELL */}
-                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell> {/* NEW CELL */}
+                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell>
+                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell>
                       <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
                       <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center justify-center space-x-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-foreground/60 hover:text-primary hover:bg-accent"
-                            onClick={() => handleEditClick(expense)}
-                          >
+                          <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-primary hover:bg-accent" onClick={() => handleEditClick(expense)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <AlertDialog>
@@ -443,22 +344,12 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete the expense "{expense.name}".
-                                </AlertDialogDescription>
+                                <AlertDialogDescription>This action cannot be undone. This will permanently delete the expense "{expense.name}".</AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteExpense(expense.id)}
-                                  disabled={deletingId === expense.id}
-                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                                >
-                                  {deletingId === expense.id ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  ) : (
-                                    'Delete'
-                                  )}
+                                <AlertDialogAction onClick={() => handleDeleteExpense(expense.id)} disabled={deletingId === expense.id} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                                  {deletingId === expense.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Delete'}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -472,23 +363,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             </div>
           )}
         </CardContent>
-        {currentExpenseToEdit && (
-          <EditExpenseDialog
-            open={isEditDialogOpen}
-            onOpenChange={setIsEditDialogOpen}
-            expense={currentExpenseToEdit}
-            onExpenseUpdated={() => {
-              // Trigger a refresh by incrementing the trigger state if needed, 
-              // but for now, we rely on the component re-rendering after dialog closes.
-            }}
-          />
-        )}
       </Card>
-      <ExportSettingsModal
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        onSettingsSaved={refreshProfile}
-      />
+      <ExportSettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} onSettingsSaved={refreshProfile} />
     </>
   );
 };
