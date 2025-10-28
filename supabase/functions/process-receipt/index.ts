@@ -297,7 +297,11 @@ Example of a valid response:
 
   } catch (error: any) {
     console.error("Unhandled Edge function error:", error?.message);
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: error?.message }), {
+    // Ensure a JSON response is always returned on unhandled errors
+    return new Response(JSON.stringify({ 
+      error: "Internal Server Error", 
+      details: error?.message || "An unknown error occurred in the Edge Function." 
+    }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
