@@ -111,7 +111,7 @@ Carefully analyze the following receipt image and extract all expense items into
 
 Each object in the array must have the following fields:
 - "name": (string) The name of the item or service.
-- "category": (string) MUST be one of: ${validSubcategories.join(", ")}.
+- "category": (string) **CRITICAL: This MUST be one of the exact strings from the list below.** Choose the category that best fits the item or the overall nature of the receipt.
 - "amount": (number) The total price of the item.
 - "date": (string) The date of the purchase in YYYY-MM-DD format.
 - "merchant": (string or null) The name of the merchant.
@@ -123,6 +123,9 @@ Each object in the array must have the following fields:
 - "description": (string or null) A detailed description of the expense item.
 - "sasia": (number or null) The quantity of the item. Default to 1 if not found.
 - "njesia": (string or null) The unit of measure (e.g., 'cope', 'kg', 'L'). MUST be one of: ${validUnits.join(", ")}. Default to 'cope' if not found.
+
+**VALID CATEGORIES (MUST use one of these exact strings):**
+${validSubcategories.join(", ")}
 
 If any information is missing from the receipt, use a reasonable default or null.
 
@@ -244,9 +247,24 @@ Example of a valid response:
       let njesia = validUnits.includes(expense.njesia) ? expense.njesia : "cope";
       let sasia = parseFloat(expense.sasia) || 1;
 
+      // Enhanced category validation: prioritize exact match, then default if necessary
+      let category = "690-09 Te tjera"; // Default fallback
+      if (validSubcategories.includes(expense.category)) {
+          category = expense.category;
+      } else {
+          // Attempt a fuzzy match if the AI returned something close but not exact
+          const fuzzyMatch = validSubcategories.find(
+              (validCat) => expense.category && validCat.toLowerCase().includes(expense.category.toLowerCase())
+          );
+          if (fuzzyMatch) {
+              category = fuzzyMatch;
+          }
+      }
+
+
       return {
         name: expense.name || "Unknown Item",
-        category: validSubcategories.includes(expense.category) ? expense.category : "690-09 Te tjera",
+        category: category,
         amount: parseFloat(expense.amount) || 0,
         date: expense.date || new Date().toISOString().split("T")[0],
         merchant: expense.merchant || null,
