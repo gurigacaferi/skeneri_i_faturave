@@ -249,218 +249,140 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Review Receipt: {receiptId?.substring(0, 8)}...</h1>
-        <div className="flex gap-4">
-          <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
-            ) : (
-              'Save All Changes'
-            )}
-          </Button>
+    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-background">
+      {/* Main scrolling container, mimicking DialogContent */}
+      <div className="w-full max-w-7xl flex flex-col bg-card rounded-lg shadow-lg border overflow-hidden">
+        {/* Header mimicking DialogHeader */}
+        <div className="p-6 pb-4 border-b">
+          <h1 className="text-2xl font-bold">Review Receipt: {receiptId?.substring(0, 8)}...</h1>
+          <p className="text-sm text-muted-foreground">Verify and edit the extracted expense items.</p>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left Column: Receipt Viewer (40% width) */}
-        <Card className="lg:col-span-2 h-full">
-          <CardHeader>
-            <CardTitle>Receipt Image</CardTitle>
-            <CardDescription>Zoom and pan to verify extracted data.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4"> {/* Removed fixed height constraints */}
+        {/* Main content area with grid, mimicking the form layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+          {/* Left Column: Receipt Viewer (40% width) */}
+          <aside className="lg:col-span-2 h-full hidden lg:block">
             <ReceiptViewer receiptId={receiptId} />
-          </CardContent>
-        </Card>
+          </aside>
 
-        {/* Right Column: Expense Editor (60% width) */}
-        <div className="lg:col-span-3 space-y-6">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">Expense Items ({editedExpenses.length})</h2>
-            <Button onClick={addNewExpense} size="sm" disabled={isLoading}>
-              <PlusCircle className="w-4 h-4 mr-2" /> Add Item
+          {/* Right Column: Expense Forms (60% width), wrapped in a form and made scrollable */}
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
+            <div className="grid gap-4">
+              {editedExpenses.map((expense, index) => (
+                <div key={expense.id || index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
+                  <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Expense #{index + 1}
+                  </div>
+                  
+                  {/* Row 1: Name, Category, Amount, VAT Code, Date */}
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`name-${expense.id || index}`}>Name</Label>
+                    <Input id={`name-${expense.id || index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-3">
+                    <Label htmlFor={`category-${expense.id || index}`}>Category</Label>
+                    <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
+                      <SelectTrigger id={`category-${expense.id || index}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                          <SelectGroup key={mainCategory}>
+                            <SelectLabel>{mainCategory}</SelectLabel>
+                            {subcategories.map((subCategory) => (<SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>))}
+                          </SelectGroup>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`amount-${expense.id || index}`}>Amount</Label>
+                    <Input id={`amount-${expense.id || index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', parseFloat(e.target.value) || 0)} disabled={isLoading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`vat_code-${expense.id || index}`}>VAT Code</Label>
+                    <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
+                      <SelectTrigger id={`vat_code-${expense.id || index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
+                      <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`date-${expense.id || index}`}>Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !expense.date && 'text-muted-foreground')} disabled={isLoading}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar mode="single" selected={new Date(expense.date)} onSelect={(date) => handleInputChange(index, 'date', format(date!, 'yyyy-MM-dd'))} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se */}
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`merchant-${expense.id || index}`}>Merchant</Label>
+                    <Input id={`merchant-${expense.id || index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`nui-${expense.id || index}`}>NUI</Label>
+                    <Input id={`nui-${expense.id || index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`nr_fiskal-${expense.id || index}`}>Nr. Fiskal</Label>
+                    <Input id={`nr_fiskal-${expense.id || index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`numri_i_tvsh_se-${expense.id || index}`}>Numri i TVSH-se</Label>
+                    <Input id={`numri_i_tvsh_se-${expense.id || index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  
+                  {/* Row 3: Sasia, Njesia, Description, Actions */}
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`sasia-${expense.id || index}`}>Sasia (Qty)</Label>
+                    <Input id={`sasia-${expense.id || index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', parseFloat(e.target.value) || 0)} disabled={isLoading} />
+                  </div>
+                  <div className="col-span-6 md:col-span-2">
+                    <Label htmlFor={`njesia-${expense.id || index}`}>Njesia (Unit)</Label>
+                    <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
+                      <SelectTrigger id={`njesia-${expense.id || index}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
+                      <SelectContent>
+                        {NJESIA_OPTIONS.map((unit) => (<SelectItem key={unit} value={unit}>{unit}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-6 md:col-span-4">
+                    <Label htmlFor={`description-${expense.id || index}`}>Description</Label>
+                    <Input id={`description-${expense.id || index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value || null)} disabled={isLoading} />
+                  </div>
+
+                  <div className="col-span-12 md:col-span-2 flex items-end justify-end space-x-2 mt-4 md:mt-0">
+                    <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+              ))}
+              <Button onClick={addNewExpense} variant="secondary" className="mt-4" disabled={isLoading}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        {/* Footer with action buttons, mimicking DialogFooter and making it sticky */}
+        <div className="p-6 border-t bg-background sticky bottom-0">
+          <div className="flex justify-end space-x-2">
+            <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button type="submit" onClick={handleSave} disabled={isLoading}>
+              {isLoading ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
+              ) : (
+                'Save All Changes'
+              )}
             </Button>
           </div>
-          
-          {editedExpenses.map((expense, index) => (
-            <Card key={expense.id || index} className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
-                <CardTitle className="text-lg">Item #{index + 1}</CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => removeExpense(index)} disabled={isLoading}>
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4">
-                {/* Row 1: Name */}
-                <div className="sm:col-span-2 space-y-1">
-                  <Label htmlFor={`name-${index}`}>Name</Label>
-                  <Input id={`name-${index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
-                </div>
-
-                {/* Row 2: Category */}
-                <div className="sm:col-span-2 space-y-1">
-                  <Label htmlFor={`category-${index}`}>Category</Label>
-                  <Select 
-                    value={expense.category} 
-                    onValueChange={(value) => handleInputChange(index, 'category', value)}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger id={`category-${index}`}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                        <SelectGroup key={mainCategory}>
-                          <SelectLabel>{mainCategory}</SelectLabel>
-                          {subcategories.map((subCategory) => (<SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>))}
-                        </SelectGroup>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Row 3: Amount & Date */}
-                <div className="space-y-1">
-                  <Label htmlFor={`amount-${index}`}>Amount</Label>
-                  <Input 
-                    id={`amount-${index}`} 
-                    type="number" 
-                    step="0.01" 
-                    value={expense.amount} 
-                    onChange={(e) => handleInputChange(index, 'amount', e.target.value)} 
-                    disabled={isLoading} 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`date-${index}`}>Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={'outline'}
-                        className={cn(
-                          'w-full justify-start text-left font-normal',
-                          !expense.date && 'text-muted-foreground'
-                        )}
-                        disabled={isLoading}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={new Date(expense.date)}
-                        onSelect={(date) => handleInputChange(index, 'date', format(date!, 'yyyy-MM-dd'))}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                {/* Row 4: Sasia & Njesia */}
-                <div className="space-y-1">
-                  <Label htmlFor={`sasia-${index}`}>Sasia (Qty)</Label>
-                  <Input 
-                    id={`sasia-${index}`} 
-                    type="number" 
-                    step="1" 
-                    value={expense.sasia || 1} 
-                    onChange={(e) => handleInputChange(index, 'sasia', e.target.value)} 
-                    disabled={isLoading} 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`njesia-${index}`}>Njesia (Unit)</Label>
-                  <Select 
-                    value={expense.njesia || NJESIA_OPTIONS[0]} 
-                    onValueChange={(value) => handleInputChange(index, 'njesia', value)}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger id={`njesia-${index}`}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {NJESIA_OPTIONS.map((unit) => (<SelectItem key={unit} value={unit}>{unit}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Row 5: Merchant & NUI */}
-                <div className="space-y-1">
-                  <Label htmlFor={`merchant-${index}`}>Merchant</Label>
-                  <Input id={`merchant-${index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value)} disabled={isLoading} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`nui-${index}`}>NUI</Label>
-                  <Input id={`nui-${index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value)} disabled={isLoading} />
-                </div>
-
-                {/* Row 6: Nr. Fiskal & Numri i TVSH-se */}
-                <div className="space-y-1">
-                  <Label htmlFor={`nr_fiskal-${index}`}>Nr. Fiskal</Label>
-                  <Input id={`nr_fiskal-${index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value)} disabled={isLoading} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`numri_i_tvsh_se-${index}`}>Numri i TVSH-se</Label>
-                  <Input id={`numri_i_tvsh_se-${index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value)} disabled={isLoading} />
-                </div>
-
-                {/* Row 7: VAT Code & TVSH (%) */}
-                <div className="space-y-1">
-                  <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
-                  <Select 
-                    value={expense.vat_code} 
-                    onValueChange={(value) => handleInputChange(index, 'vat_code', value)}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger id={`vat_code-${index}`}><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor={`tvsh_percentage-${index}`}>TVSH (%)</Label>
-                  <Input
-                    id={`tvsh_percentage-${index}`}
-                    type="number"
-                    value={expense.tvsh_percentage}
-                    className="bg-muted/50 cursor-not-allowed"
-                    readOnly
-                    disabled
-                  />
-                </div>
-
-                {/* Row 8: Description (Span 2) */}
-                <div className="space-y-1 sm:col-span-2">
-                  <Label htmlFor={`description-${index}`}>Description</Label>
-                  <Textarea
-                    id={`description-${index}`}
-                    value={expense.description || ''}
-                    onChange={(e) => handleInputChange(index, 'description', e.target.value)}
-                    className="min-h-[80px]"
-                    disabled={isLoading}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
         </div>
-      </div>
-      
-      <div className="mt-8 flex justify-end gap-4 border-t pt-4">
-        <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
-          Cancel
-        </Button>
-        <Button onClick={handleSave} disabled={isLoading}>
-          {isLoading ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
-          ) : (
-            'Save All Changes'
-          )}
-        </Button>
       </div>
     </div>
   );
