@@ -5,11 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import Login from "./pages/Login";
-import AdminPage from "./pages/Admin";
-import { SessionContextProvider } from "./components/SessionContextProvider";
-import ReviewReceiptPage from "./pages/ReviewReceiptPage";
-import EditExpensePage from "./pages/EditExpensePage";
+import Login from "./pages/Login"; // Import the new Login page
+import AdminPage from "./pages/Admin"; // Import the new Admin page
+import { SessionContextProvider } from "./components/SessionContextProvider"; // Import the new context provider
 
 const queryClient = new QueryClient();
 
@@ -19,13 +17,11 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <SessionContextProvider>
+        <SessionContextProvider> {/* Wrap routes with SessionContextProvider */}
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/review-receipt/:receiptId" element={<ReviewReceiptPage />} />
-            <Route path="/expense/:expenseId/edit" element={<EditExpensePage />} />
+            <Route path="/login" element={<Login />} /> {/* Add the Login route */}
+            <Route path="/admin" element={<AdminPage />} /> {/* Add the Admin route */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

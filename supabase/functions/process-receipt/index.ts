@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.200.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import OpenAI from "https://esm.sh/openai@4.52.7"; // FIX: Using esm.sh for better Deno compatibility
+import OpenAI from "npm:openai";
 
 // Define CORS headers locally to ensure deployment success
 const corsHeaders = {
@@ -62,13 +62,15 @@ async function sha256(message: string): Promise<string> {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight immediately
+  console.log("process-receipt Edge Function invoked. Method:", req.method);
+
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
+    console.log("Handling OPTIONS request for CORS preflight.");
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   try {
-    console.log("process-receipt Edge Function invoked. Method:", req.method);
     const { base64Image, filename, batchId, receiptId } = await req.json();
 
     if (!receiptId) {
@@ -99,6 +101,9 @@ serve(async (req) => {
       });
     }
 
+    // NOTE: Receipt record creation is now handled by the client (ReceiptUpload.tsx)
+    // We rely on the passed receiptId for subsequent expense insertion.
+
     const systemPrompt = `You are an expert AI assistant specializing in accurately extracting structured data from receipt images. Your task is to return a clean, valid JSON object based on the user's request, without any additional commentary or explanations.`;
 
     const chatGptPrompt = `
@@ -123,6 +128,27 @@ Each object in the array must have the following fields:
 ${validSubcategories.join(", ")}
 
 If any information is missing from the receipt, use a reasonable default or null.
+
+Example of a valid response:
+{
+  "expenses": [
+    {
+      "name": "Kafe",
+      "category": "665-04 Ushqim dhe pije",
+      "amount": 1.50,
+      "date": "2024-07-15",
+      "merchant": "Kafe Bar",
+      "vat_code": "[45] Blerjet vendore 8%",
+      "tvsh_percentage": 8,
+      "nui": "810000000",
+      "nr_fiskal": "123456789",
+      "numri_i_tvsh_se": "600000000",
+      "description": "Morning coffee purchase",
+      "sasia": 2,
+      "njesia": "cope"
+    }
+  ]
+}
 `;
 
     const promptHash = await sha256(user.id + systemPrompt + chatGptPrompt + base64Image);
@@ -144,31 +170,48 @@ If any information is missing from the receipt, use a reasonable default or null
 
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openaiApiKey) {
-      throw new Error("OPENAI_API_KEY is not set in environment variables.");
+      return new Response(JSON.stringify({ error: "OpenAI API Key is not configured." }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
+    // Make sure the image is a valid data URL
     const imageUrl = base64Image.startsWith("data:")
       ? base64Image
       : `data:image/png;base64,${base64Image}`;
 
-    console.log("Calling GPT-4o model...");
-    const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: chatGptPrompt },
-            { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 2000,
-    });
+    console.log("Calling GPT-4o model with enhanced prompt...");
+    let chatCompletion;
+    try {
+      chatCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: chatGptPrompt },
+              { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+      });
+    } catch (openaiError: any) {
+      const status = openaiError?.status || openaiError?.response?.status;
+      const data = openaiError?.response?.data;
+      console.error("OpenAI API call failed:", openaiError?.message, { status, data });
+      return new Response(JSON.stringify({
+        error: "Failed to process receipt with AI",
+        details: openaiError?.message,
+        status,
+        openaiPayloadError: data,
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
     if (!aiResponseContent) throw new Error("OpenAI did not return any content.");
@@ -183,6 +226,7 @@ If any information is missing from the receipt, use a reasonable default or null
       if (jsonMatch?.[0]) extractedExpenses = JSON.parse(jsonMatch[0]);
     }
 
+    // Validate and default categories/VAT codes
     const validatedExpenses = extractedExpenses.map((expense: any) => {
       let vatCode = "No VAT";
       let tvshPercentage = 0;
@@ -190,11 +234,33 @@ If any information is missing from the receipt, use a reasonable default or null
       if (validVatCodes.includes(expense.vat_code)) {
         vatCode = expense.vat_code;
         tvshPercentage = getPercentageFromVatCode(vatCode);
+      } else {
+        const found = validVatCodes.find(
+          (code) => expense.vat_code && code.toLowerCase().includes(expense.vat_code.toLowerCase()),
+        );
+        if (found) {
+          vatCode = found;
+          tvshPercentage = getPercentageFromVatCode(found);
+        }
       }
       
       let njesia = validUnits.includes(expense.njesia) ? expense.njesia : "cope";
       let sasia = parseFloat(expense.sasia) || 1;
-      let category = validSubcategories.includes(expense.category) ? expense.category : "690-09 Te tjera";
+
+      // Enhanced category validation: prioritize exact match, then default if necessary
+      let category = "690-09 Te tjera"; // Default fallback
+      if (validSubcategories.includes(expense.category)) {
+          category = expense.category;
+      } else {
+          // Attempt a fuzzy match if the AI returned something close but not exact
+          const fuzzyMatch = validSubcategories.find(
+              (validCat) => expense.category && validCat.toLowerCase().includes(expense.category.toLowerCase())
+          );
+          if (fuzzyMatch) {
+              category = fuzzyMatch;
+          }
+      }
+
 
       return {
         name: expense.name || "Unknown Item",
@@ -208,18 +274,20 @@ If any information is missing from the receipt, use a reasonable default or null
         nr_fiskal: expense.nr_fiskal || null,
         numri_i_tvsh_se: expense.numri_i_tvsh_se || null,
         description: expense.description || null,
-        sasia: sasia,
-        njesia: njesia,
+        sasia: sasia, // NEW FIELD
+        njesia: njesia, // NEW FIELD
       };
     });
 
-    await supabase
+    // Cache the AI response
+    const { error: insertCacheError } = await supabase
       .from("prompt_cache")
       .insert({
         user_id: user.id,
         prompt_hash: promptHash,
         ai_response: validatedExpenses,
       });
+    if (insertCacheError) console.error("Cache insert error:", insertCacheError.message);
 
     return new Response(JSON.stringify({
       message: "Receipt processed successfully",
@@ -228,12 +296,8 @@ If any information is missing from the receipt, use a reasonable default or null
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error: any) {
-    console.error("Unhandled Edge function error:", error); // Log the full error object
-    return new Response(JSON.stringify({ 
-      error: "Internal Server Error", 
-      details: error?.message || "An unknown error occurred.",
-      stack: error?.stack || "No stack trace available." // Also include the stack trace
-    }), {
+    console.error("Unhandled Edge function error:", error?.message);
+    return new Response(JSON.stringify({ error: "Internal Server Error", details: error?.message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
