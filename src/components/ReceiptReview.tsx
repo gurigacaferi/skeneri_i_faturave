@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DatePicker } from './DatePicker';
+import { DatePicker } from './ui/DatePicker'; // CORRECTED PATH
 import {
   AlertDialog,
   AlertDialogAction,
