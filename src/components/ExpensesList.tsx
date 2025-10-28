@@ -84,7 +84,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Determine which columns to fetch from the database
-  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia';
+  // TEMPORARILY REMOVING 'sasia' and 'njesia' to confirm database schema issue.
+  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description';
 
   // Effect for fetching data, now depends on debounced values
   useEffect(() => {
@@ -118,6 +119,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
       const { data, error } = await query.order('date', { ascending: false });
 
       if (error) {
+        // If the error is NOT about sasia/njesia, we show it.
+        // If the error is about sasia/njesia, we assume the user is fixing the DB.
         showError('Failed to fetch expenses: ' + error.message);
       } else {
         setExpenses(data || []);
