@@ -1,9 +1,9 @@
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import SessionContextProvider from './components/SessionContextProvider';
-import Auth from './pages/Auth';
-import Dashboard from './pages/Dashboard';
-import Header from './components/Header';
-import ReceiptReviewScreen from './pages/ReceiptReviewScreen'; // Import the new screen
+import SessionContextProvider from '@/components/SessionContextProvider';
+import Auth from '@/pages/Auth';
+import Dashboard from '@/pages/Dashboard';
+import Header from '@/components/Header';
+import ReceiptReviewScreen from '@/pages/ReceiptReviewScreen';
 
 function App() {
   return (
@@ -39,11 +39,13 @@ function App() {
 }
 
 const PrivateRoute = ({ children }: { children: JSX.Element }) => {
-  // In a real app, you'd have a more robust auth check
-  // For now, we'll just check if there's a session in a context or similar
-  // This is a placeholder for the logic you'd use with your auth provider
-  const accessToken = localStorage.getItem('supabase.auth.token'); // Example check
-  return accessToken ? children : <Navigate to="/login" />;
+  const { session, isLoading } = useSession();
+
+  if (isLoading) {
+    return <div>Loading...</div>; // Or a spinner component
+  }
+
+  return session ? children : <Navigate to="/login" />;
 };
 
 export default App;
