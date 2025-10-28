@@ -8,7 +8,7 @@ const validSubcategories = [
   "660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional",
   "665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije",
   "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera",
-  "667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi",
+  "667-01 Sherbimet profesionale", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi",
   "668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti",
   "669-01 Shpenzimet e karburantit", "669-02 Mirembajtje dhe riparim",
   "675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks",
@@ -36,6 +36,11 @@ const validVatCodes = [
   "[49] Blerjet investive vendore 8%",
   "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%",
   "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
+];
+
+// Valid units (Njesia)
+const validUnits = [
+  "cope", "kg", "g", "L", "ml", "m", "cm", "m2", "m3", "kWh", "dite", "ore", "muaj", "vit", "pakete", "shishe", "kuti", "tjeter",
 ];
 
 const getPercentageFromVatCode = (vatCode: string): number => {
@@ -111,6 +116,8 @@ Each object in the array must have the following fields:
 - "nr_fiskal": (string or null) The fiscal number (Nr. Fiskal) of the receipt.
 - "numri_i_tvsh_se": (string or null) The VAT number (Numri i TVSH-se) of the merchant.
 - "description": (string or null) A detailed description of the expense item.
+- "sasia": (number or null) The quantity of the item. Default to 1 if not found.
+- "njesia": (string or null) The unit of measure (e.g., 'cope', 'kg', 'L'). MUST be one of: ${validUnits.join(", ")}. Default to 'cope' if not found.
 
 If any information is missing from the receipt, use a reasonable default or null.
 
@@ -128,7 +135,9 @@ Example of a valid response:
       "nui": "810000000",
       "nr_fiskal": "123456789",
       "numri_i_tvsh_se": "600000000",
-      "description": "Morning coffee purchase"
+      "description": "Morning coffee purchase",
+      "sasia": 2,
+      "njesia": "cope"
     }
   ]
 }
@@ -181,7 +190,7 @@ Example of a valid response:
           },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 2000, // Increased max_tokens for more complex receipts
+        max_tokens: 2000,
       });
     } catch (openaiError: any) {
       const status = openaiError?.status || openaiError?.response?.status;
@@ -226,6 +235,9 @@ Example of a valid response:
           tvshPercentage = getPercentageFromVatCode(found);
         }
       }
+      
+      let njesia = validUnits.includes(expense.njesia) ? expense.njesia : "cope";
+      let sasia = parseFloat(expense.sasia) || 1;
 
       return {
         name: expense.name || "Unknown Item",
@@ -235,10 +247,12 @@ Example of a valid response:
         merchant: expense.merchant || null,
         vat_code: vatCode,
         tvsh_percentage: tvshPercentage,
-        nui: expense.nui || null, // New field
-        nr_fiskal: expense.nr_fiskal || null, // New field
-        numri_i_tvsh_se: expense.numri_i_tvsh_se || null, // New field
-        description: expense.description || null, // New field
+        nui: expense.nui || null,
+        nr_fiskal: expense.nr_fiskal || null,
+        numri_i_tvsh_se: expense.numri_i_tvsh_se || null,
+        description: expense.description || null,
+        sasia: sasia, // NEW FIELD
+        njesia: njesia, // NEW FIELD
       };
     });
 

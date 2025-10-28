@@ -22,8 +22,9 @@ import { CalendarIcon } from '@radix-ui/react-icons';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import ReceiptViewer from './ReceiptViewer'; // Import ReceiptViewer
-import { Textarea } from '@/components/ui/textarea'; // Use Textarea for description
+import ReceiptViewer from './ReceiptViewer';
+import { Textarea } from '@/components/ui/textarea';
+import { NJESIA_OPTIONS } from '@/lib/constants'; // Import constants
 
 interface Expense {
   id: string;
@@ -38,7 +39,9 @@ interface Expense {
   nr_fiskal: string | null;
   numri_i_tvsh_se: string | null;
   description: string | null;
-  receipt_id: string | null; // Added receipt_id
+  receipt_id: string | null;
+  sasia: number | null; // NEW FIELD
+  njesia: string | null; // NEW FIELD
 }
 
 interface EditExpenseDialogProps {
@@ -84,6 +87,8 @@ const formSchema = z.object({
   nr_fiskal: z.string().nullable(),
   numri_i_tvsh_se: z.string().nullable(),
   description: z.string().nullable(),
+  sasia: z.coerce.number().min(0.01, 'Quantity must be greater than 0').nullable(), // NEW FIELD
+  njesia: z.string().refine(val => NJESIA_OPTIONS.includes(val), 'A valid unit is required').nullable(), // NEW FIELD
 });
 
 const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
@@ -109,6 +114,8 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
       nr_fiskal: expense.nr_fiskal,
       numri_i_tvsh_se: expense.numri_i_tvsh_se,
       description: expense.description,
+      sasia: expense.sasia || 1, // Default new field
+      njesia: expense.njesia || NJESIA_OPTIONS[0], // Default new field
     },
   });
 
@@ -133,6 +140,8 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
         nr_fiskal: expense.nr_fiskal,
         numri_i_tvsh_se: expense.numri_i_tvsh_se,
         description: expense.description,
+        sasia: expense.sasia || 1,
+        njesia: expense.njesia || NJESIA_OPTIONS[0],
       });
     }
   }, [open, expense, form]);
@@ -161,6 +170,8 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
           nr_fiskal: values.nr_fiskal,
           numri_i_tvsh_se: values.numri_i_tvsh_se,
           description: values.description,
+          sasia: values.sasia, // Update new field
+          njesia: values.njesia, // Update new field
         })
         .eq('id', expense.id)
         .eq('user_id', session.user.id);
@@ -282,7 +293,44 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
                 )}
               </div>
 
-              {/* Row 4: Merchant & NUI */}
+              {/* Row 4: Sasia & Njesia */}
+              <div className="space-y-1">
+                <Label htmlFor="sasia">Sasia (Qty)</Label>
+                <Input
+                  id="sasia"
+                  type="number"
+                  step="1"
+                  {...form.register('sasia', { valueAsNumber: true })}
+                  disabled={loading}
+                />
+                {form.formState.errors.sasia && (
+                  <p className="text-sm text-red-500">{form.formState.errors.sasia.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="njesia">Njesia (Unit)</Label>
+                <Select
+                  onValueChange={(value) => form.setValue('njesia', value)}
+                  value={form.watch('njesia') || NJESIA_OPTIONS[0]}
+                  disabled={loading}
+                >
+                  <SelectTrigger id="njesia">
+                    <SelectValue placeholder="Select unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NJESIA_OPTIONS.map((unit) => (
+                      <SelectItem key={unit} value={unit}>
+                        {unit}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.formState.errors.njesia && (
+                  <p className="text-sm text-red-500">{form.formState.errors.njesia.message}</p>
+                )}
+              </div>
+
+              {/* Row 5: Merchant & NUI */}
               <div className="space-y-1">
                 <Label htmlFor="merchant">Merchant</Label>
                 <Input id="merchant" {...form.register('merchant')} disabled={loading} />
@@ -298,7 +346,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
                 )}
               </div>
 
-              {/* Row 5: Nr. Fiskal & Numri i TVSH-se */}
+              {/* Row 6: Nr. Fiskal & Numri i TVSH-se */}
               <div className="space-y-1">
                 <Label htmlFor="nr_fiskal">Nr. Fiskal</Label>
                 <Input id="nr_fiskal" {...form.register('nr_fiskal')} disabled={loading} />
@@ -314,7 +362,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
                 )}
               </div>
 
-              {/* Row 6: VAT Code & TVSH (%) */}
+              {/* Row 7: VAT Code & TVSH (%) */}
               <div className="space-y-1">
                 <Label htmlFor="vat_code">VAT Code</Label>
                 <Select
@@ -349,7 +397,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({
                 />
               </div>
 
-              {/* Row 7: Description (Span 2) */}
+              {/* Row 8: Description (Span 2) */}
               <div className="space-y-1 sm:col-span-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea

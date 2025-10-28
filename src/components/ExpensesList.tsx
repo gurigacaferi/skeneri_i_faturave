@@ -31,7 +31,7 @@ import { DateRangeFilter } from './DateRangeFilter';
 import { exportExpensesToCsv, DEFAULT_EXPORT_COLUMNS } from '@/utils/exportToCsv';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Checkbox } from '@/components/ui/checkbox';
-import ExportSettingsModal from './ExportSettingsModal'; // Import the new modal
+import ExportSettingsModal from './ExportSettingsModal';
 
 interface Expense {
   id: string;
@@ -43,10 +43,12 @@ interface Expense {
   tvsh_percentage: number;
   vat_code: string | null;
   created_at: string;
-  nui: string | null; // Added new fields
-  nr_fiskal: string | null; // Added new fields
-  numri_i_tvsh_se: string | null; // Added new fields
-  description: string | null; // Added new fields
+  nui: string | null;
+  nr_fiskal: string | null;
+  numri_i_tvsh_se: string | null;
+  description: string | null;
+  sasia: number | null; // NEW FIELD
+  njesia: string | null; // NEW FIELD
 }
 
 interface ExpensesListProps {
@@ -59,7 +61,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false); // State for settings modal
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   
@@ -82,7 +84,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Determine which columns to fetch from the database
-  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description';
+  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia';
 
   // Effect for fetching data, now depends on debounced values
   useEffect(() => {
@@ -160,7 +162,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
       });
 
       showSuccess('Expense deleted successfully!');
-      // No need to rely on refreshTrigger now for deletion
     } catch (error: any) {
       showError('Failed to delete expense: ' + error.message);
     } finally {
@@ -398,6 +399,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                     <TableHead className="py-3 px-4">Merchant</TableHead>
                     <TableHead className="py-3 px-4">Item</TableHead>
                     <TableHead className="py-3 px-4">Category</TableHead>
+                    <TableHead className="py-3 px-4">Sasia</TableHead> {/* NEW HEADER */}
+                    <TableHead className="py-3 px-4">Njesia</TableHead> {/* NEW HEADER */}
                     <TableHead className="text-right py-3 px-4">Amount</TableHead>
                     <TableHead className="text-right py-3 px-4">VAT Code</TableHead>
                     <TableHead className="text-center py-3 px-4">Actions</TableHead>
@@ -417,6 +420,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                       <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
                       <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
+                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell> {/* NEW CELL */}
+                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell> {/* NEW CELL */}
                       <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
                       <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4">
@@ -473,8 +478,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             onOpenChange={setIsEditDialogOpen}
             expense={currentExpenseToEdit}
             onExpenseUpdated={() => {
-              // When an expense is updated, we still need to refetch the data 
-              // to ensure filters and sorting are correct, so we rely on refreshTrigger.
+              // Trigger a refresh by incrementing the trigger state if needed, 
+              // but for now, we rely on the component re-rendering after dialog closes.
             }}
           />
         )}
@@ -482,7 +487,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
       <ExportSettingsModal
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
-        onSettingsSaved={refreshProfile} // Refresh profile to get new settings immediately
+        onSettingsSaved={refreshProfile}
       />
     </>
   );

@@ -10,10 +10,12 @@ interface Expense {
   tvsh_percentage: number;
   vat_code: string | null;
   created_at: string;
-  nui: string | null; // New field
-  nr_fiskal: string | null; // New field
-  numri_i_tvsh_se: string | null; // New field
-  description: string | null; // New field
+  nui: string | null;
+  nr_fiskal: string | null;
+  numri_i_tvsh_se: string | null;
+  description: string | null;
+  sasia: number | null; // NEW FIELD
+  njesia: string | null; // NEW FIELD
 }
 
 // Map of internal expense keys to user-friendly CSV headers
@@ -29,6 +31,8 @@ const COLUMN_MAP: { [key: string]: { header: string; accessor: (expense: Expense
   nr_fiskal: { header: 'Nr. Fiskal', accessor: (e) => e.nr_fiskal },
   numri_i_tvsh_se: { header: 'Numri i TVSH-se', accessor: (e) => e.numri_i_tvsh_se },
   description: { header: 'Description', accessor: (e) => e.description },
+  sasia: { header: 'Sasia', accessor: (e) => e.sasia }, // NEW FIELD
+  njesia: { header: 'Njesia', accessor: (e) => e.njesia }, // NEW FIELD
   // Hardcoded fields for accounting systems (like QuickBooks) that need specific columns
   dueDate: { header: 'Due Date', accessor: (e) => format(addDays(new Date(e.date), 30), 'yyyy-MM-dd') },
   billNo: { header: 'Bill No', accessor: (e) => `EXP-${e.id.substring(0, 8)}` },
@@ -36,7 +40,7 @@ const COLUMN_MAP: { [key: string]: { header: string; accessor: (expense: Expense
 
 // Default columns for a standard export if no preference is provided
 export const DEFAULT_EXPORT_COLUMNS = [
-  'date', 'merchant', 'name', 'category', 'amount', 'vat_code',
+  'date', 'merchant', 'name', 'category', 'amount', 'vat_code', 'sasia', 'njesia',
 ];
 
 // Columns required by external systems (like QuickBooks) that must be included regardless of user preference

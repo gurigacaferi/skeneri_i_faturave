@@ -20,6 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid';
+import { NJESIA_OPTIONS } from '@/lib/constants'; // Import constants
 
 interface ExpenseItem {
   tempId: string;
@@ -31,10 +32,12 @@ interface ExpenseItem {
   merchant: string | null;
   tvsh_percentage: number;
   vat_code: string;
-  nui: string | null; // New field
-  nr_fiskal: string | null; // New field
-  numri_i_tvsh_se: string | null; // New field
-  description: string | null; // New field
+  nui: string | null;
+  nr_fiskal: string | null;
+  numri_i_tvsh_se: string | null;
+  description: string | null;
+  sasia: number | null; // NEW FIELD
+  njesia: string | null; // NEW FIELD
 }
 
 interface InitialExpenseData {
@@ -47,10 +50,10 @@ interface InitialExpenseData {
     merchant: string | null;
     tvsh_percentage: number;
     vat_code: string;
-    nui: string | null; // New field
-    nr_fiskal: string | null; // New field
-    numri_i_tvsh_se: string | null; // New field
-    description: string | null; // New field
+    nui: string | null;
+    nr_fiskal: string | null;
+    numri_i_tvsh_se: string | null;
+    description: string | null;
   };
 }
 
@@ -60,7 +63,7 @@ interface ExpenseSplitterDialogProps {
   initialExpenses: InitialExpenseData[] | null;
   batchId: string | null;
   onExpensesSaved: () => void;
-  isConnectedToQuickBooks: boolean; // Kept for compatibility but ignored
+  isConnectedToQuickBooks: boolean;
 }
 
 const expenseCategories = {
@@ -106,10 +109,12 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         merchant: data.expense.merchant,
         vat_code: data.expense.vat_code || 'No VAT',
         tvsh_percentage: getPercentageFromVatCode(data.expense.vat_code || 'No VAT'),
-        nui: data.expense.nui, // Initialize new field
-        nr_fiskal: data.expense.nr_fiskal, // Initialize new field
-        numri_i_tvsh_se: data.expense.numri_i_tvsh_se, // Initialize new field
-        description: data.expense.description, // Initialize new field
+        nui: data.expense.nui,
+        nr_fiskal: data.expense.nr_fiskal,
+        numri_i_tvsh_se: data.expense.numri_i_tvsh_se,
+        description: data.expense.description,
+        sasia: 1, // Default quantity
+        njesia: NJESIA_OPTIONS[0] || 'cope', // Default unit
       }));
       setExpenses(parsedExpenses.length > 0 ? parsedExpenses : [createNewEmptyExpense()]);
     } else if (open && !initialExpenses) {
@@ -127,10 +132,12 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
     merchant: baseExpense?.merchant || null,
     vat_code: baseExpense?.vat_code || 'No VAT',
     tvsh_percentage: getPercentageFromVatCode(baseExpense?.vat_code || 'No VAT'),
-    nui: baseExpense?.nui || null, // Default new field
-    nr_fiskal: baseExpense?.nr_fiskal || null, // Default new field
-    numri_i_tvsh_se: baseExpense?.numri_i_tvsh_se || null, // Default new field
-    description: baseExpense?.description || null, // Default new field
+    nui: baseExpense?.nui || null,
+    nr_fiskal: baseExpense?.nr_fiskal || null,
+    numri_i_tvsh_se: baseExpense?.numri_i_tvsh_se || null,
+    description: baseExpense?.description || null,
+    sasia: baseExpense?.sasia || 1, // Default new field
+    njesia: baseExpense?.njesia || NJESIA_OPTIONS[0] || 'cope', // Default new field
   });
 
   const handleAddExpense = () => setExpenses((prev) => [...prev, createNewEmptyExpense()]);
@@ -154,8 +161,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
     const expenseToSplit = expenses.find((exp) => exp.tempId === tempId);
     if (expenseToSplit) {
       const newAmount = parseFloat((expenseToSplit.amount / 2).toFixed(2));
-      const newExpense1 = createNewEmptyExpense({ ...expenseToSplit, tempId: uuidv4(), amount: newAmount });
-      const newExpense2 = createNewEmptyExpense({ ...expenseToSplit, tempId: uuidv4(), amount: newAmount });
+      const newExpense1 = createNewEmptyExpense({ ...expenseToSplit, tempId: uuidv4(), amount: newAmount, sasia: 1 });
+      const newExpense2 = createNewEmptyExpense({ ...expenseToSplit, tempId: uuidv4(), amount: newAmount, sasia: 1 });
       setExpenses((prev) => prev.map(e => e.tempId === tempId ? [newExpense1, newExpense2] : e).flat());
     }
   };
@@ -165,6 +172,8 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
       if (!exp.name.trim()) { showError(`Expense name is required.`); return false; }
       if (!exp.category || !allSubcategories.includes(exp.category)) { showError(`A valid category is required.`); return false; }
       if (exp.amount <= 0) { showError(`Amount must be greater than 0.`); return false; }
+      if (exp.sasia === null || exp.sasia <= 0) { showError(`Quantity (Sasia) must be greater than 0.`); return false; }
+      if (!exp.njesia) { showError(`Unit (Njesia) is required.`); return false; }
     }
     return true;
   };
@@ -191,10 +200,12 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         merchant: exp.merchant?.trim() || null,
         vat_code: exp.vat_code,
         tvsh_percentage: exp.tvsh_percentage,
-        nui: exp.nui, // Insert new field
-        nr_fiskal: exp.nr_fiskal, // Insert new field
-        numri_i_tvsh_se: exp.numri_i_tvsh_se, // Insert new field
-        description: exp.description, // Insert new field
+        nui: exp.nui,
+        nr_fiskal: exp.nr_fiskal,
+        numri_i_tvsh_se: exp.numri_i_tvsh_se,
+        description: exp.description,
+        sasia: exp.sasia, // Insert new field
+        njesia: exp.njesia, // Insert new field
       }));
 
       const { data: insertedExpenses, error: expensesError } = await supabase
@@ -211,8 +222,6 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
       dismissToast(toastId);
       showSuccess('Expenses saved successfully!');
-
-      // Removed QuickBooks integration logic here
 
       onExpensesSaved();
       onOpenChange(false);
@@ -285,7 +294,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
                 </Popover>
               </div>
 
-              {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se, Description, Actions */}
+              {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se */}
               <div className="col-span-6 md:col-span-2">
                 <Label htmlFor={`merchant-${exp.tempId}`}>Merchant</Label>
                 <Input id={`merchant-${exp.tempId}`} value={exp.merchant || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'merchant', e.target.value || null)} disabled={loading} />
@@ -302,7 +311,22 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
                 <Label htmlFor={`numri_i_tvsh_se-${exp.tempId}`}>Numri i TVSH-se</Label>
                 <Input id={`numri_i_tvsh_se-${exp.tempId}`} value={exp.numri_i_tvsh_se || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'numri_i_tvsh_se', e.target.value || null)} disabled={loading} />
               </div>
+              
+              {/* Row 3: Sasia, Njesia, Description, Actions */}
               <div className="col-span-6 md:col-span-2">
+                <Label htmlFor={`sasia-${exp.tempId}`}>Sasia (Qty)</Label>
+                <Input id={`sasia-${exp.tempId}`} type="number" step="1" value={exp.sasia || 1} onChange={(e) => handleUpdateExpense(exp.tempId, 'sasia', parseFloat(e.target.value) || 0)} disabled={loading} />
+              </div>
+              <div className="col-span-6 md:col-span-2">
+                <Label htmlFor={`njesia-${exp.tempId}`}>Njesia (Unit)</Label>
+                <Select onValueChange={(value) => handleUpdateExpense(exp.tempId, 'njesia', value)} value={exp.njesia || NJESIA_OPTIONS[0]} disabled={loading}>
+                  <SelectTrigger id={`njesia-${exp.tempId}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
+                  <SelectContent>
+                    {NJESIA_OPTIONS.map((unit) => (<SelectItem key={unit} value={unit}>{unit}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-6 md:col-span-4">
                 <Label htmlFor={`description-${exp.tempId}`}>Description</Label>
                 <Input id={`description-${exp.tempId}`} value={exp.description || ''} onChange={(e) => handleUpdateExpense(exp.tempId, 'description', e.target.value || null)} disabled={loading} />
               </div>

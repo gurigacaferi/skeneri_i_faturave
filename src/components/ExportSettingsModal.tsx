@@ -34,6 +34,8 @@ const DISPLAY_NAME_MAP: { [key: string]: string } = {
   nr_fiskal: 'Nr. Fiskal',
   numri_i_tvsh_se: 'Numri i TVSH-se',
   description: 'Description',
+  sasia: 'Sasia (Quantity)', // NEW FIELD
+  njesia: 'Njesia (Unit)', // NEW FIELD
 };
 
 const ExportSettingsModal: React.FC<ExportSettingsModalProps> = ({
