@@ -109,11 +109,11 @@ serve(async (req) => {
     const chatGptPrompt = `
 Carefully analyze the following receipt image and extract all expense items into a JSON array named "expenses".
 
-**CRITICAL INSTRUCTION:** For each expense item, you must analyze the line-item details to accurately determine the quantity ("sasia") and the unit of measure ("njesia").
+**IMPORTANT:** For each expense item, you must analyze the line-item details to accurately determine the quantity ("sasia") and the unit of measure ("njesia").
 
 Each object in the array must have the following fields:
 - "name": (string) The name of the item or service.
-- "category": (string) **CRITICAL: This MUST be one of the exact strings from the list below.** Choose the category that best fits the item or the overall nature of the receipt.
+- "category": (string) **IMPORTANT: This MUST be one of the exact strings from the list below.** Choose the category that best fits the item or the overall nature of the receipt.
 - "amount": (number) The total price of the item.
 - "date": (string) The date of the purchase in YYYY-MM-DD format.
 - "merchant": (string or null) The name of the merchant.
