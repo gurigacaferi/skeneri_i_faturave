@@ -109,7 +109,7 @@ serve(async (req) => {
     const chatGptPrompt = `
 Carefully analyze the following receipt image and extract all expense items into a JSON array named "expenses".
 
-**IMPORTANT:** For each expense item, you must analyze the line-item details to accurately determine the quantity ("sasia") and the unit of measure ("njesia").
+**INSTRUCTION:** You must process every line item individually, as the category, quantity, and unit may differ for each product.
 
 Each object in the array must have the following fields:
 - "name": (string) The name of the item or service.
@@ -123,8 +123,8 @@ Each object in the array must have the following fields:
 - "nr_fiskal": (string or null) The fiscal number (Nr. Fiskal) of the receipt.
 - "numri_i_tvsh_se": (string or null) The VAT number (Numri i TVSH-se) of the merchant.
 - "description": (string or null) A detailed description of the expense item.
-- "sasia": (number) The quantity of the item. **If not explicitly found, default to 1.**
-- "njesia": (string) The unit of measure (e.g., 'cope', 'kg', 'L'). MUST be one of: ${validUnits.join(", ")}. **If not explicitly found, default to 'cope'.**
+- "sasia": (number) The quantity of the item. If not explicitly found, default to 1.
+- "njesia": (string) The unit of measure (e.g., 'cope', 'kg', 'L'). **Based on the product name, determine the most appropriate unit and map it EXACTLY to one of the following options:** ${validUnits.join(", ")}. If no unit is found or determined, default to 'cope'.
 
 **VALID CATEGORIES (MUST use one of these exact strings):**
 ${validSubcategories.join(", ")}
