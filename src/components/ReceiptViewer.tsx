@@ -97,8 +97,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
   }
 
   return (
-    // Removed h-full and overflow-hidden. Added min-h-[400px] for visual consistency when image is short.
-    <div className="min-h-[400px] bg-muted/50 rounded-lg flex flex-col relative">
+    <div className="w-full bg-muted/50 rounded-lg flex flex-col relative">
       <TransformWrapper>
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
@@ -113,13 +112,20 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
                 <RotateCcw className="h-4 w-4" />
               </Button>
             </div>
+
             <TransformComponent
-              wrapperStyle={{ width: '100%', height: 'auto' }}
-              contentStyle={{ width: '100%', height: 'auto' }}
+              wrapperStyle={{
+                width: '100%',
+                height: 'auto',
+              }}
+              contentStyle={{
+                width: '100%',
+                height: 'auto',
+              }}
             >
-              <img 
-                src={imageUrl} 
-                alt="Receipt" 
+              <img
+                src={imageUrl}
+                alt="Receipt"
                 className="w-full h-auto object-contain"
               />
             </TransformComponent>
