@@ -18,6 +18,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { NJESIA_OPTIONS } from '@/lib/constants';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast'; // Import toast utilities
 
 // Define categories and VAT codes locally for the form logic
 const expenseCategories = {
@@ -249,23 +250,27 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-background">
-      {/* Main scrolling container, mimicking DialogContent */}
-      <div className="w-full max-w-7xl flex flex-col bg-card rounded-lg shadow-lg border overflow-hidden">
-        {/* Header mimicking DialogHeader */}
-        <div className="p-6 pb-4 border-b">
+    // Outer wrapper to center the modal-like container
+    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-secondary/50">
+      {/* Main content container: Fixed max height, enables internal scrolling */}
+      <div className="w-full max-w-7xl flex flex-col bg-card rounded-lg shadow-2xl border overflow-hidden max-h-[90vh]">
+        
+        {/* Header */}
+        <div className="p-6 pb-4 border-b flex-shrink-0">
           <h1 className="text-2xl font-bold">Review Receipt: {receiptId?.substring(0, 8)}...</h1>
           <p className="text-sm text-muted-foreground">Verify and edit the extracted expense items.</p>
         </div>
 
-        {/* Main content area with grid, mimicking the form layout */}
+        {/* Main Grid Area: Takes remaining vertical space */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+          
           {/* Left Column: Receipt Viewer (40% width) */}
           <aside className="lg:col-span-2 h-full hidden lg:block">
+            {/* ReceiptViewer needs its parent to define height, h-full ensures it fills the grid cell */}
             <ReceiptViewer receiptId={receiptId} />
           </aside>
 
-          {/* Right Column: Expense Forms (60% width), wrapped in a form and made scrollable */}
+          {/* Right Column: Expense Forms (60% width), scrollable */}
           <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
             <div className="grid gap-4">
               {editedExpenses.map((expense, index) => (
@@ -368,8 +373,8 @@ const ReceiptReviewScreen = () => {
           </form>
         </div>
 
-        {/* Footer with action buttons, mimicking DialogFooter and making it sticky */}
-        <div className="p-6 border-t bg-background sticky bottom-0">
+        {/* Footer with action buttons */}
+        <div className="p-6 border-t bg-background flex-shrink-0">
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
               Cancel
