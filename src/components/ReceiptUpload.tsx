@@ -45,6 +45,9 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>(null);
 
+  // Define pendingFiles here so it's available for rendering
+  const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed');
+
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
     setFiles(prevFiles =>
       prevFiles.map(file =>
@@ -89,7 +92,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   };
 
   const handleFileUpload = async () => {
-    const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed');
+    // Use the already defined pendingFiles variable
     if (pendingFiles.length === 0) { showError('No files selected or pending processing.'); return; }
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
