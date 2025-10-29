@@ -250,10 +250,10 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    // Outer wrapper to center the modal-like container
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-secondary/50">
-      {/* Main content container: Fixed max height, enables internal scrolling */}
-      <div className="w-full max-w-7xl flex flex-col bg-card rounded-lg shadow-2xl border overflow-hidden max-h-[90vh]">
+    // Outer wrapper: Standard page container
+    <div className="w-full p-4 md:p-8">
+      {/* Main content container: Grows naturally */}
+      <div className="w-full mx-auto max-w-7xl flex flex-col bg-card rounded-lg shadow-2xl border">
         
         {/* Header */}
         <div className="p-6 pb-4 border-b flex-shrink-0">
@@ -261,16 +261,16 @@ const ReceiptReviewScreen = () => {
           <p className="text-sm text-muted-foreground">Verify and edit the extracted expense items.</p>
         </div>
 
-        {/* Main Grid Area: Takes remaining vertical space */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+        {/* Main Grid Area: Content grows naturally */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6">
           
           {/* Left Column: Receipt Viewer (40% width) */}
-          <aside className="lg:col-span-2 h-full hidden lg:block">
+          <aside className="lg:col-span-2 hidden lg:block">
             <ReceiptViewer receiptId={receiptId} />
           </aside>
 
-          {/* Right Column: Expense Forms (60% width), scrollable */}
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3 overflow-y-auto">
+          {/* Right Column: Expense Forms (60% width) */}
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3">
             <div className="grid gap-4">
               {editedExpenses.map((expense, index) => (
                 <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-start border-b pb-4 mb-4 last:border-b-0 last:pb-0">
