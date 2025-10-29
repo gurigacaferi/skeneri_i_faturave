@@ -124,7 +124,16 @@ Each object in the array must have the following fields:
 - "numri_i_tvsh_se": (string or null) The VAT number (Numri i TVSH-se) of the merchant.
 - "description": (string or null) A detailed description of the expense item.
 - "sasia": (number) The quantity of the item. If not explicitly found, default to 1.
-- "njesia": (string) The unit of measure (e.g., 'cope', 'kg', 'L'). **Based on the product name, determine the most appropriate unit and map it EXACTLY to one of the following options:** ${validUnits.join(", ")}. If no unit is found or determined, default to 'cope'.
+- "njesia": (string) The unit of measure. **This MUST be one of the exact strings from the list below.**
+
+**UNIT MAPPING RULES for "njesia":**
+1. If the receipt explicitly shows a unit (e.g., 'kg', 'L', 'm'), use the exact match from the list below.
+2. If the unit is abbreviated (e.g., 'ml', 'gr', 'lt', 'm2'), map it to the full unit name from the list (e.g., 'ml' -> 'ml', 'gr' -> 'g', 'lt' -> 'L').
+3. If no unit is found, infer the unit based on the product name (e.g., 'Milk' -> 'L', 'Apples' -> 'kg', 'Service Fee' -> 'cope').
+4. If inference is impossible, default to 'cope'.
+
+**VALID UNITS (MUST use one of these exact strings):**
+${validUnits.join(", ")}
 
 **VALID CATEGORIES (MUST use one of these exact strings):**
 ${validSubcategories.join(", ")}
@@ -159,7 +168,7 @@ Example of a valid response:
       .from("prompt_cache")
       .select("ai_response")
       .eq("prompt_hash", promptHash)
-      .eq("user_id", user.id)
+      .eq("user.id", user.id)
       .single();
 
     if (cachedResponse) {
@@ -246,6 +255,8 @@ Example of a valid response:
         }
       }
       
+      // NOTE: The prompt now handles mapping common abbreviations (like 'gr' to 'g')
+      // The validation here ensures the final output is one of the exact strings in validUnits.
       let njesia = validUnits.includes(expense.njesia) ? expense.njesia : "cope";
       let sasia = parseFloat(expense.sasia) || 1;
 
