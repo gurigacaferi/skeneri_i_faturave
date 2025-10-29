@@ -48,8 +48,15 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'],
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/webp': ['.webp'],
       'application/pdf': ['.pdf'],
+      // Keeping other common image types for robustness, but focusing on the requested ones
+      'image/gif': ['.gif'],
+      'image/bmp': ['.bmp'],
+      'image/heic': ['.heic'],
+      'image/heif': ['.heif'],
     },
     multiple: true,
   });
