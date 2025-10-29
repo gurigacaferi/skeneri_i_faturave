@@ -86,7 +86,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   };
 
   const getFileIcon = (fileType: string) => {
-    if (fileType.startsWith('image/')) return <Image className="h-5 w-5 text-primary" />;
+    if (typeof fileType === 'string' && fileType.startsWith('image/')) return <Image className="h-5 w-5 text-primary" />;
     if (fileType === 'application/pdf') return <FileIcon className="h-5 w-5 text-red-500" />;
     return <FileIcon className="h-5 w-5 text-gray-500" />;
   };
