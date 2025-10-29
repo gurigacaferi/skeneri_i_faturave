@@ -266,25 +266,27 @@ const ReceiptReviewScreen = () => {
           
           {/* Left Column: Receipt Viewer (40% width) */}
           <aside className="lg:col-span-2 h-full hidden lg:block">
-            {/* ReceiptViewer needs its parent to define height, h-full ensures it fills the grid cell */}
             <ReceiptViewer receiptId={receiptId} />
           </aside>
 
           {/* Right Column: Expense Forms (60% width), scrollable */}
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3 overflow-y-auto">
             <div className="grid gap-4">
               {editedExpenses.map((expense, index) => (
-                <div key={expense.id || index} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border-b pb-4 mb-4 last:border-b-0 last:pb-0">
-                  <div className="col-span-12 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-start border-b pb-4 mb-4 last:border-b-0 last:pb-0">
+                  <div className="col-span-full text-sm font-semibold text-gray-700 dark:text-gray-300 flex justify-between items-center">
                     Expense #{index + 1}
+                    <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                   
-                  {/* Row 1: Name, Category, Amount, VAT Code, Date */}
-                  <div className="col-span-6 md:col-span-3">
+                  {/* Row 1: Name, Category */}
+                  <div className="col-span-full">
                     <Label htmlFor={`name-${expense.id || index}`}>Name</Label>
                     <Input id={`name-${expense.id || index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
                   </div>
-                  <div className="col-span-6 md:col-span-3">
+                  <div className="col-span-full">
                     <Label htmlFor={`category-${expense.id || index}`}>Category</Label>
                     <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
                       <SelectTrigger id={`category-${expense.id || index}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
@@ -298,18 +300,13 @@ const ReceiptReviewScreen = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-6 md:col-span-2">
+
+                  {/* Row 2: Amount, Date, VAT Code */}
+                  <div>
                     <Label htmlFor={`amount-${expense.id || index}`}>Amount</Label>
                     <Input id={`amount-${expense.id || index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', parseFloat(e.target.value) || 0)} disabled={isLoading} />
                   </div>
-                  <div className="col-span-6 md:col-span-2">
-                    <Label htmlFor={`vat_code-${expense.id || index}`}>VAT Code</Label>
-                    <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
-                      <SelectTrigger id={`vat_code-${expense.id || index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
-                      <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-6 md:col-span-2">
+                  <div>
                     <Label htmlFor={`date-${expense.id || index}`}>Date</Label>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -323,31 +320,20 @@ const ReceiptReviewScreen = () => {
                       </PopoverContent>
                     </Popover>
                   </div>
+                  <div>
+                    <Label htmlFor={`vat_code-${expense.id || index}`}>VAT Code</Label>
+                    <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
+                      <SelectTrigger id={`vat_code-${expense.id || index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
+                      <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
+                    </Select>
+                  </div>
 
-                  {/* Row 2: Merchant, NUI, Nr. Fiskal, Numri i TVSH-se */}
-                  <div className="col-span-6 md:col-span-2">
-                    <Label htmlFor={`merchant-${expense.id || index}`}>Merchant</Label>
-                    <Input id={`merchant-${expense.id || index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                  <div className="col-span-6 md:col-span-2">
-                    <Label htmlFor={`nui-${expense.id || index}`}>NUI</Label>
-                    <Input id={`nui-${expense.id || index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                  <div className="col-span-6 md:col-span-2">
-                    <Label htmlFor={`nr_fiskal-${expense.id || index}`}>Nr. Fiskal</Label>
-                    <Input id={`nr_fiskal-${expense.id || index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                  <div className="col-span-6 md:col-span-2">
-                    <Label htmlFor={`numri_i_tvsh_se-${expense.id || index}`}>Numri i TVSH-se</Label>
-                    <Input id={`numri_i_tvsh_se-${expense.id || index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                  
-                  {/* Row 3: Sasia, Njesia, Description, Actions */}
-                  <div className="col-span-6 md:col-span-2">
+                  {/* Row 3: Sasia, Njesia, Merchant */}
+                  <div>
                     <Label htmlFor={`sasia-${expense.id || index}`}>Sasia (Qty)</Label>
                     <Input id={`sasia-${expense.id || index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', parseFloat(e.target.value) || 0)} disabled={isLoading} />
                   </div>
-                  <div className="col-span-6 md:col-span-2">
+                  <div>
                     <Label htmlFor={`njesia-${expense.id || index}`}>Njesia (Unit)</Label>
                     <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
                       <SelectTrigger id={`njesia-${expense.id || index}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
@@ -356,13 +342,29 @@ const ReceiptReviewScreen = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-6 md:col-span-4">
-                    <Label htmlFor={`description-${expense.id || index}`}>Description</Label>
-                    <Input id={`description-${expense.id || index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value || null)} disabled={isLoading} />
+                  <div>
+                    <Label htmlFor={`merchant-${expense.id || index}`}>Merchant</Label>
+                    <Input id={`merchant-${expense.id || index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value || null)} disabled={isLoading} />
                   </div>
 
-                  <div className="col-span-12 md:col-span-2 flex items-end justify-end space-x-2 mt-4 md:mt-0">
-                    <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense"><Trash2 className="h-4 w-4" /></Button>
+                  {/* Row 4: NUI, Nr. Fiskal, Numri i TVSH-se */}
+                  <div>
+                    <Label htmlFor={`nui-${expense.id || index}`}>NUI</Label>
+                    <Input id={`nui-${expense.id || index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  <div>
+                    <Label htmlFor={`nr_fiskal-${expense.id || index}`}>Nr. Fiskal</Label>
+                    <Input id={`nr_fiskal-${expense.id || index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  <div>
+                    <Label htmlFor={`numri_i_tvsh_se-${expense.id || index}`}>Numri i TVSH-se</Label>
+                    <Input id={`numri_i_tvsh_se-${expense.id || index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value || null)} disabled={isLoading} />
+                  </div>
+                  
+                  {/* Row 5: Description (Full width) */}
+                  <div className="col-span-full">
+                    <Label htmlFor={`description-${expense.id || index}`}>Description</Label>
+                    <Textarea id={`description-${expense.id || index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value || null)} disabled={isLoading} />
                   </div>
                 </div>
               ))}
