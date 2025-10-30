@@ -72,7 +72,7 @@ const expenseCategories = {
   "665 Shpenzimet e zyres": ["665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera"],
   "667 Sherbimet profesionale": ["667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi"],
   "668 Shpenzimet e udhetimit": ["668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti"],
-  "669 Shpenzimet e automjetit": ["669-01 Shpenzimet e karburantit", "669-02 Mirembajtje dhe riparim"],
+  "669 Shpenzimet e automjetit": ["669-01 Shpenzimet e karburantit", "669-02 Mirembajtje e riparim"],
   "675 Shpenzimet e komunikimit": ["675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks"],
   "683 Shpenzimet e sigurimit": ["683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses"],
   "686 Komunalite": ["686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes"],
@@ -333,12 +333,14 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
           {/* Left Column: Receipt Viewer */}
-          <aside className="md:col-span-2 h-full">
-            <ReceiptViewer receiptId={currentReceiptId} />
+          <aside className="lg:col-span-2 h-full flex flex-col">
+            <div className="flex-grow">
+              <ReceiptViewer receiptId={currentReceiptId} />
+            </div>
             {orderedReceiptIds.length > 1 && (
-              <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center justify-between mt-4 flex-shrink-0">
                 <Button onClick={handlePrevReceipt} variant="outline">
                   <ChevronLeft className="h-4 w-4 mr-2" /> Previous
                 </Button>
@@ -353,7 +355,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </aside>
 
           {/* Right Column: Expense Forms */}
-          <div className="md:col-span-3 overflow-y-auto pr-2 -mr-2">
+          <div className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
             {currentExpenses.length > 0 ? (
               <div className="grid gap-4">
                 {currentExpenses.map((exp, index) => (
