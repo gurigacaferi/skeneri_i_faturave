@@ -10,6 +10,10 @@ import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTri
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress'; // Import Progress component
+import * as pdfjs from 'pdfjs-dist';
+
+// Set the worker source for pdfjs-dist
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -36,6 +40,34 @@ interface UploadedFile extends File {
   receiptId?: string;
   errorMessage?: string;
 }
+
+/**
+ * Converts the first page of a PDF file to a Base64 JPEG image string.
+ * @param file The PDF File object.
+ * @returns A promise that resolves to the Base64 data URL of the image.
+ */
+const convertPdfToImageBase64 = async (file: File): Promise<string> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1); // Get the first page
+
+  const viewport = page.getViewport({ scale: 2.0 }); // Scale up for better resolution
+  const canvas = document.createElement('canvas');
+  const canvasContext = canvas.getContext('2d');
+  
+  if (!canvasContext) {
+    throw new Error("Failed to get canvas context.");
+  }
+
+  canvas.height = viewport.height;
+  canvas.width = viewport.width;
+
+  await page.render({ canvasContext, viewport }).promise;
+
+  // Convert canvas content to JPEG Base64 data URL
+  return canvas.toDataURL('image/jpeg', 0.9);
+};
+
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -72,7 +104,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       'image/png': ['.png'],
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/webp': ['.webp'],
-      // Removed 'application/pdf': ['.pdf']
+      'application/pdf': ['.pdf'], // Re-enabled PDF
       'image/gif': ['.gif'],
       'image/bmp': ['.bmp'],
       'image/heic': ['.heic'],
@@ -138,12 +170,19 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         updateFileState(file.id, { progress: 40, receiptId, status: 'processing' });
 
         // 3. Read file to base64 for AI processing
-        const base64Image = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(file);
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = (error) => reject(error);
-        });
+        let base64Image: string;
+        if (file.type === 'application/pdf') {
+          // Convert PDF to image Base64 string
+          base64Image = await convertPdfToImageBase64(file);
+        } else {
+          // Read image file to Base64 data URL
+          base64Image = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = (error) => reject(error);
+          });
+        }
 
         // 4. Invoke Edge Function with base64 image (50% progress)
         const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
@@ -205,7 +244,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       <Card className="w-full max-w-3xl mx-auto shadow-lg shadow-black/5 border-0">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Upload Your Receipts</CardTitle>
-          <CardDescription>Drag and drop your receipt image(s) below.</CardDescription>
+          <CardDescription>Drag and drop your receipt image(s) or PDF(s) below.</CardDescription>
         </CardHeader>
         <CardContent className="p-6">
           <div {...getRootProps()} className="border-2 border-dashed border-primary/30 rounded-lg p-10 text-center cursor-pointer hover:border-primary transition-colors bg-gradient-to-br from-background to-secondary/50" aria-disabled={isUploading}>
