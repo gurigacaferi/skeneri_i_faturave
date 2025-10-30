@@ -95,7 +95,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px] bg-muted/50 rounded-lg">
+      <div className="flex items-center justify-center h-full bg-muted/50 rounded-lg">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -103,7 +103,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
 
   if (!imageUrl) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] bg-muted/50 rounded-lg p-4 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center h-full bg-muted/50 rounded-lg p-4 text-muted-foreground">
         <ImageOff className="h-10 w-10 mb-2" />
         <p>Receipt image not available.</p>
         <p className="text-xs text-center mt-1">Ensure the receipt was uploaded correctly and the storage bucket is configured.</p>
@@ -112,7 +112,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
   }
 
   return (
-    <div className="w-full bg-muted/50 rounded-lg flex flex-col relative">
+    <div className="w-full h-full bg-muted/50 rounded-lg flex flex-col relative">
       <TransformWrapper>
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
@@ -131,17 +131,17 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
             <TransformComponent
               wrapperStyle={{
                 width: '100%',
-                height: 'auto',
+                height: '100%',
               }}
               contentStyle={{
                 width: '100%',
-                height: 'auto',
+                height: '100%',
               }}
             >
               <img
                 src={imageUrl}
                 alt="Receipt"
-                className="w-full h-auto object-contain"
+                className="w-full h-full object-contain"
               />
             </TransformComponent>
           </>
