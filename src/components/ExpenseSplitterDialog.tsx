@@ -339,19 +339,6 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
             <div className="flex-grow min-h-0">
               <ReceiptViewer receiptId={currentReceiptId} />
             </div>
-            {orderedReceiptIds.length > 1 && (
-              <div className="flex items-center justify-between mt-4 flex-shrink-0">
-                <Button onClick={handlePrevReceipt} variant="outline" disabled={loading}>
-                  <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                </Button>
-                <span className="text-sm font-medium text-muted-foreground">
-                  Receipt {currentReceiptIndex + 1} of {orderedReceiptIds.length}
-                </span>
-                <Button onClick={handleNextReceipt} variant="outline" disabled={loading}>
-                  Next <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              </div>
-            )}
           </aside>
 
           {/* Right Column: Expense Forms */}
@@ -464,11 +451,28 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </div>
         </div>
 
-        <DialogFooter className="p-6 border-t bg-background">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
-          <Button onClick={handleSaveAllExpenses} disabled={loading || orderedReceiptIds.length === 0}>
-            {loading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>) : ('Save All Expenses')}
-          </Button>
+        <DialogFooter className="p-6 border-t bg-background flex justify-between items-center">
+          <div>
+            {orderedReceiptIds.length > 1 && (
+              <div className="flex items-center gap-2">
+                <Button onClick={handlePrevReceipt} variant="outline" size="icon" disabled={loading}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium text-muted-foreground">
+                  Receipt {currentReceiptIndex + 1} of {orderedReceiptIds.length}
+                </span>
+                <Button onClick={handleNextReceipt} variant="outline" size="icon" disabled={loading}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>Cancel</Button>
+            <Button onClick={handleSaveAllExpenses} disabled={loading || orderedReceiptIds.length === 0}>
+              {loading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>) : ('Save All Expenses')}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
