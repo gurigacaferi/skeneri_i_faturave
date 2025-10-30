@@ -72,7 +72,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       'image/png': ['.png'],
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/webp': ['.webp'],
-      'application/pdf': ['.pdf'],
+      // Removed 'application/pdf': ['.pdf']
       'image/gif': ['.gif'],
       'image/bmp': ['.bmp'],
       'image/heic': ['.heic'],
@@ -205,7 +205,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       <Card className="w-full max-w-3xl mx-auto shadow-lg shadow-black/5 border-0">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Upload Your Receipts</CardTitle>
-          <CardDescription>Drag and drop your receipt image(s) or PDF(s) below.</CardDescription>
+          <CardDescription>Drag and drop your receipt image(s) below.</CardDescription>
         </CardHeader>
         <CardContent className="p-6">
           <div {...getRootProps()} className="border-2 border-dashed border-primary/30 rounded-lg p-10 text-center cursor-pointer hover:border-primary transition-colors bg-gradient-to-br from-background to-secondary/50" aria-disabled={isUploading}>
