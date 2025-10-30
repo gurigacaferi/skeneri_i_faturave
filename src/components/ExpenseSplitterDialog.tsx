@@ -325,7 +325,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-7xl w-full max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="sm:max-w-7xl w-full max-h-[95vh] flex flex-col p-0">
         <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle>Review and Split Expenses</DialogTitle>
           <DialogDescription>
@@ -333,16 +333,16 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 flex-grow overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
           {/* Left Column: Receipt Viewer */}
-          <aside className="md:col-span-1 h-full flex flex-col">
+          <aside className="md:col-span-2 h-full flex flex-col">
             <div className="flex-grow min-h-0">
               <ReceiptViewer receiptId={currentReceiptId} />
             </div>
           </aside>
 
           {/* Right Column: Expense Forms */}
-          <div className="md:col-span-1 overflow-y-auto pr-2 -mr-2">
+          <div className="md:col-span-3 overflow-y-auto pr-2 -mr-2">
             {currentExpenses.length > 0 ? (
               <div className="grid gap-4">
                 {currentExpenses.map((exp, index) => (
