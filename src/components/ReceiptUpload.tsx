@@ -11,12 +11,10 @@ import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress'; // Import Progress component
 import * as pdfjs from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?url';
 
 // Set the worker source for pdfjs-dist to be bundled with Vite
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.js',
-  import.meta.url,
-).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
