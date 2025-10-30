@@ -333,21 +333,21 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
           {/* Left Column: Receipt Viewer */}
-          <aside className="lg:col-span-2 h-full flex flex-col">
+          <aside className="md:col-span-2 h-full flex flex-col">
             <div className="flex-grow">
               <ReceiptViewer receiptId={currentReceiptId} />
             </div>
             {orderedReceiptIds.length > 1 && (
               <div className="flex items-center justify-between mt-4 flex-shrink-0">
-                <Button onClick={handlePrevReceipt} variant="outline">
+                <Button onClick={handlePrevReceipt} variant="outline" disabled={loading}>
                   <ChevronLeft className="h-4 w-4 mr-2" /> Previous
                 </Button>
                 <span className="text-sm font-medium text-muted-foreground">
                   Receipt {currentReceiptIndex + 1} of {orderedReceiptIds.length}
                 </span>
-                <Button onClick={handleNextReceipt} variant="outline">
+                <Button onClick={handleNextReceipt} variant="outline" disabled={loading}>
                   Next <ChevronRight className="h-4 w-4 ml-2" />
                 </Button>
               </div>
@@ -355,7 +355,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </aside>
 
           {/* Right Column: Expense Forms */}
-          <div className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
+          <div className="md:col-span-3 overflow-y-auto pr-2 -mr-2">
             {currentExpenses.length > 0 ? (
               <div className="grid gap-4">
                 {currentExpenses.map((exp, index) => (

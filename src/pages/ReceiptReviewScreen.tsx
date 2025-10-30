@@ -262,15 +262,15 @@ const ReceiptReviewScreen = () => {
         </div>
 
         {/* Main Grid Area: Content grows naturally */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6">
           
           {/* Left Column: Receipt Viewer (40% width) */}
-          <aside className="lg:col-span-2 hidden lg:block">
+          <aside className="md:col-span-2">
             <ReceiptViewer receiptId={receiptId} />
           </aside>
 
           {/* Right Column: Expense Forms (60% width) */}
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="lg:col-span-3">
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="md:col-span-3">
             <div className="grid gap-4">
               {editedExpenses.map((expense, index) => (
                 <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-start border-b pb-4 mb-4 last:border-b-0 last:pb-0">
