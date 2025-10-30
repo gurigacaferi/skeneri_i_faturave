@@ -76,7 +76,7 @@ const expenseCategories = {
   "675 Shpenzimet e komunikimit": ["675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks"],
   "683 Shpenzimet e sigurimit": ["683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses"],
   "686 Komunalite": ["686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes"],
-  "690 Shpenzime tjera operative": ["690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare"],
+  "690 Shpenzime tjera operative": ["690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare", "690-09 Te tjera"],
 };
 
 const allSubcategories = Object.values(expenseCategories).flat();
@@ -333,9 +333,9 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
           {/* Left Column: Receipt Viewer */}
-          <aside className="lg:col-span-2 h-full hidden lg:block">
+          <aside className="md:col-span-2 h-full">
             <ReceiptViewer receiptId={currentReceiptId} />
             {orderedReceiptIds.length > 1 && (
               <div className="flex items-center justify-between mt-4">
@@ -353,7 +353,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
           </aside>
 
           {/* Right Column: Expense Forms */}
-          <div className="lg:col-span-3 overflow-y-auto pr-2 -mr-2">
+          <div className="md:col-span-3 overflow-y-auto pr-2 -mr-2">
             {currentExpenses.length > 0 ? (
               <div className="grid gap-4">
                 {currentExpenses.map((exp, index) => (
