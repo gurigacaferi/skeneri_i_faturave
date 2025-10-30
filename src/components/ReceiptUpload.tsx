@@ -12,8 +12,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress'; // Import Progress component
 import * as pdfjs from 'pdfjs-dist';
 
-// Set the worker source for pdfjs-dist
-pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// Set the worker source for pdfjs-dist to be bundled with Vite
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.js',
+  import.meta.url,
+).toString();
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
