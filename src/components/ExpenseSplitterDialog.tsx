@@ -336,7 +336,7 @@ const ExpenseSplitterDialog: React.FC<ExpenseSplitterDialogProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6 flex-grow overflow-hidden">
           {/* Left Column: Receipt Viewer */}
           <aside className="md:col-span-2 h-full flex flex-col">
-            <div className="flex-grow min-h-0">
+            <div className="flex-grow min-h-0 overflow-y-auto">
               <ReceiptViewer receiptId={currentReceiptId} />
             </div>
           </aside>

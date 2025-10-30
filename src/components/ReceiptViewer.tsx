@@ -135,13 +135,12 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
               }}
               contentStyle={{
                 width: '100%',
-                height: '100%',
               }}
             >
               <img
                 src={imageUrl}
                 alt="Receipt"
-                className="w-full h-full object-contain"
+                className="w-full"
               />
             </TransformComponent>
           </>

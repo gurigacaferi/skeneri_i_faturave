@@ -265,7 +265,7 @@ const ReceiptReviewScreen = () => {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6">
           
           {/* Left Column: Receipt Viewer (40% width) */}
-          <aside className="md:col-span-2 h-[80vh]">
+          <aside className="md:col-span-2 h-[80vh] overflow-y-auto">
             <ReceiptViewer receiptId={receiptId} />
           </aside>
 
