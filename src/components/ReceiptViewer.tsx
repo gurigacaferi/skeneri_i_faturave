@@ -53,7 +53,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
       
       const { data: receipt, error: fetchError } = await supabase
         .from('receipts')
-        .select('storage_path')
+        .select('storage_path, filename') // Fetch filename to check extension
         .eq('id', receiptId)
         .single();
 
@@ -64,6 +64,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
       }
 
       const storagePath = receipt.storage_path;
+      const filename = receipt.filename || '';
       
       // Always generate a signed URL to handle both public and private buckets securely
       const { data: signedUrlData, error: signedError } = await supabase.storage
@@ -78,8 +79,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
 
       const finalUrl = signedUrlData.signedUrl;
 
-      // Check if the file is a PDF and render it to an image
-      if (storagePath.toLowerCase().endsWith('.pdf')) {
+      // Check if the file is a PDF and render the FIRST page to an image for display
+      if (filename.toLowerCase().endsWith('.pdf')) {
         const pdfAsImageUrl = await renderPdfToImage(finalUrl);
         setImageUrl(pdfAsImageUrl);
       } else {

@@ -10,6 +10,7 @@ import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTri
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
+import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -35,6 +36,7 @@ interface UploadedFile extends File {
   progress: number;
   receiptId?: string;
   errorMessage?: string;
+  storagePath?: string; // Added storagePath to track where the file is saved
 }
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
@@ -102,18 +104,23 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     for (const file of pendingFiles) {
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
       let receiptId: string | undefined;
+      let storagePath: string | undefined;
       
       try {
-        // 1. Upload file to Supabase Storage
+        // 1. Convert file (PDF or image) to base64 image array on the client
+        const base64Images = await fileToBase64Images(file);
+        updateFileState(file.id, { progress: 20 });
+
+        // 2. Upload original file to Supabase Storage
         const fileExtension = file.name.split('.').pop();
-        const storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
+        storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
         const { error: storageError } = await supabase.storage
           .from('receipts')
           .upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
-        updateFileState(file.id, { progress: 30 });
+        updateFileState(file.id, { progress: 40, storagePath });
 
-        // 2. Insert receipt record with storage path
+        // 3. Insert receipt record with storage path
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -127,11 +134,11 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           .single();
         if (receiptInsertError) throw new Error(`DB insert failed: ${receiptInsertError.message}`);
         receiptId = receiptData.id;
-        updateFileState(file.id, { progress: 40, receiptId, status: 'processing' });
+        updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        // 3. Invoke Edge Function with storage_path
+        // 4. Invoke Edge Function with base64 image data
         const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
-          body: { storage_path: storagePath, filename: file.name, batchId: selectedBatchId, receiptId },
+          body: { base64Images, receiptId },
         });
         updateFileState(file.id, { progress: 90 });
 
@@ -140,7 +147,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
         
-        // 4. Update receipt status to processed
+        // 5. Update receipt status to processed
         await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
         updateFileState(file.id, { progress: 100, status: 'processed' });
 

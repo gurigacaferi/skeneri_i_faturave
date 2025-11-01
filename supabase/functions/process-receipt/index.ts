@@ -1,19 +1,12 @@
 import { serve } from "https://deno.land/std@0.200.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import OpenAI from "npm:openai";
-// Use esm.sh for pdfjs-dist to ensure compatibility with Deno runtime
-import * as pdfjs from "https://esm.sh/pdfjs-dist@4.4.170/build/pdf.js";
-import { createCanvas } from "https://deno.land/x/canvas@v1.4.1/mod.ts";
 
 // Define CORS headers locally to ensure deployment success
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Explicitly set the worker source from the CDN
-// @ts-ignore
-pdfjs.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.4.170/build/pdf.worker.js`;
 
 // Define the valid subcategories for validation
 const validSubcategories = [
@@ -67,49 +60,13 @@ serve(async (req) => {
   }
 
   try {
-    const { storage_path, receiptId } = await req.json();
+    // Expect base64Images array and receiptId from the client
+    const { base64Images, receiptId } = await req.json();
 
-    if (!receiptId || !storage_path) {
-        return new Response(JSON.stringify({ error: "Missing receiptId or storage_path from client." }), {
+    if (!receiptId || !base64Images || !Array.isArray(base64Images) || base64Images.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing receiptId or base64Images from client." }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-    }
-
-    // Use Admin client to bypass RLS for storage access
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
-
-    // Download the file from storage
-    const { data: fileData, error: downloadError } = await supabaseAdmin.storage
-      .from("receipts")
-      .download(storage_path);
-
-    if (downloadError) {
-      throw new Error(`Failed to download file from storage: ${downloadError.message}`);
-    }
-
-    const fileBuffer = await fileData.arrayBuffer();
-    const fileType = fileData.type;
-    let base64Images: string[] = [];
-
-    if (fileType === "application/pdf") {
-      const pdf = await pdfjs.getDocument(fileBuffer).promise;
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 2.0 });
-        const canvas = createCanvas(viewport.width, viewport.height);
-        const context = canvas.getContext("2d");
-        await page.render({ canvasContext: context, viewport }).promise;
-        base64Images.push(canvas.toDataURL("image/jpeg", 0.9));
-      }
-    } else if (fileType.startsWith("image/")) {
-      const base64String = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
-      base64Images.push(`data:${fileType};base64,${base64String}`);
-    } else {
-      throw new Error(`Unsupported file type: ${fileType}`);
     }
 
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
