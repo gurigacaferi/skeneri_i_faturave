@@ -2,10 +2,11 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
-// Inlined corsHeaders to fix the 'Module not found' deployment error
+// UPDATED corsHeaders to include Access-Control-Allow-Methods
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Added POST and OPTIONS
 }
 
 serve(async (req) => {
@@ -44,7 +45,6 @@ serve(async (req) => {
 
     if (profileError || !profile || !profile.two_factor_secret) {
       // If the secret is null, it means 2FA was never set up or was disabled.
-      // This should only happen if the client is misbehaving, but we handle it gracefully.
       return new Response(JSON.stringify({ error: '2FA secret not found for user.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
