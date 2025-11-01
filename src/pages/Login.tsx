@@ -29,67 +29,9 @@ const recoverySchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
 });
 
-const newPasswordSchema = z.object({
-  password: z.string().min(6, { message: 'New password must be at least 6 characters' }),
-});
-
-type View = 'login' | 'signup' | 'recovery' | 'update_password';
+type View = 'login' | 'signup' | 'recovery';
 
 // --- Components ---
-
-const PasswordUpdateForm: React.FC<{ navigate: (path: string) => void }> = ({ navigate }) => {
-  const { session } = useSession();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const form = useForm<z.infer<typeof newPasswordSchema>>({
-    resolver: zodResolver(newPasswordSchema),
-  });
-
-  const handleUpdatePassword = async (values: z.infer<typeof newPasswordSchema>) => {
-    if (!session) return;
-
-    setIsSubmitting(true);
-    const toastId = showLoading('Updating password...');
-
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: values.password,
-      });
-
-      if (error) throw error;
-
-      showSuccess('Password updated successfully! Redirecting to dashboard...');
-      navigate('/');
-    } catch (error: any) {
-      showError(error.message || 'Failed to update password.');
-    } finally {
-      dismissToast(toastId);
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Set New Password</CardTitle>
-        <CardDescription>Enter your new password below.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={form.handleSubmit(handleUpdatePassword)} className="space-y-4">
-          <div>
-            <Label htmlFor="new-password">New Password</Label>
-            <Input id="new-password" type="password" {...form.register('password')} />
-            {form.formState.errors.password && <p className="text-sm text-red-500 mt-1">{form.formState.errors.password.message}</p>}
-          </div>
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Update Password
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-};
 
 const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ setView }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -103,7 +45,8 @@ const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ set
     const toastId = showLoading('Sending recovery email...');
 
     try {
-      const redirectToUrl = `${window.location.origin}/login`;
+      // Redirect to the new dedicated page
+      const redirectToUrl = `${window.location.origin}/update-password`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
         redirectTo: redirectToUrl,
@@ -151,7 +94,7 @@ const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ set
 // --- Main Component ---
 
 const Login = () => {
-  const { session, loading, authEvent } = useSession();
+  const { session, loading } = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -173,25 +116,15 @@ const Login = () => {
     },
   });
 
-  // Effect to handle view changes based on the reliable authEvent from context
-  useEffect(() => {
-    if (authEvent === 'PASSWORD_RECOVERY') {
-      setView('update_password');
-    }
-  }, [authEvent]);
-
   // Effect to handle navigation for authenticated users
   useEffect(() => {
-    // Only navigate away if there's a session AND it's NOT a password recovery flow
-    if (!loading && session && authEvent !== 'PASSWORD_RECOVERY') {
+    if (!loading && session) {
       navigate('/');
     }
-  }, [session, loading, navigate, authEvent]);
+  }, [session, loading, navigate]);
 
   // Effect to sync view with URL parameters (e.g., for sign-up links)
   useEffect(() => {
-    if (authEvent === 'PASSWORD_RECOVERY') return; // Don't let URL params override recovery flow
-
     const tab = searchParams.get('tab') || 'login';
     setActiveTab(tab as 'login' | 'signup');
     setView(tab === 'signup' ? 'signup' : 'login');
@@ -201,7 +134,7 @@ const Login = () => {
       password: '',
       invitation_code: searchParams.get('code') || '',
     });
-  }, [searchParams, signUpForm, authEvent]);
+  }, [searchParams, signUpForm]);
 
   const handleLogin = async (values: z.infer<typeof loginSchema>) => {
     setIsSubmitting(true);
@@ -246,20 +179,6 @@ const Login = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-lg text-foreground/70">Loading...</p>
-      </div>
-    );
-  }
-
-  if (view === 'update_password') {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
-        <div className="w-full max-w-md">
-          <div className="flex flex-col items-center mb-6">
-            <img src="/ChatGPT Image Oct 11, 2025, 03_50_14 PM.png" alt="Fatural Logo" className="h-12 w-12 mb-2" />
-            <h2 className="text-2xl font-bold text-center text-foreground">Update Password</h2>
-          </div>
-          <PasswordUpdateForm navigate={navigate} />
-        </div>
       </div>
     );
   }
