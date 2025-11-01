@@ -77,8 +77,7 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
       handleSession(event, currentSession);
-      if (event === 'SIGNED_IN') showSuccess('Logged in successfully!');
-      if (event === 'SIGNED_OUT') showSuccess('Logged out successfully!');
+      // Removed generic SIGNED_IN and SIGNED_OUT toasts here to prevent conflicts during 2FA flow
       if (event === 'AUTH_ERROR') showError('Authentication error. Please try again.');
     });
 
