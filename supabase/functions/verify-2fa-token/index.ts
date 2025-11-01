@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { authenticator } from 'https://esm.sh/otplib@12.0.1?bundle';
+import { totp } from '../_shared/totp.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,7 +48,9 @@ Deno.serve(async (req) => {
     }
 
     const secret = profile.two_factor_secret;
-    const isValid = authenticator.check(token, secret);
+    
+    // Use the local TOTP validation function
+    const isValid = await totp.validateTotp(secret, token);
 
     if (!isValid) {
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {

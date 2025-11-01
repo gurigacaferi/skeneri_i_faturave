@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { authenticator } from 'https://esm.sh/otplib@12.0.1?bundle';
+import { totp } from '../_shared/totp.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,8 +37,8 @@ Deno.serve(async (req) => {
     }
 
     const issuer = 'Fatural';
-    const secret = authenticator.generateSecret();
-    const uri = authenticator.keyuri(user.email!, issuer, secret);
+    const secret = totp.generateSecret();
+    const uri = totp.generateKeyUri(user.email!, issuer, secret);
     
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceRoleKey) {
