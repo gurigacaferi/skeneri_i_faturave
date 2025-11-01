@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Save } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import TwoFactorAuthSettings from '@/components/TwoFactorAuthSettings'; // IMPORTED
 
 // --- Schemas ---
 const profileSchema = z.object({
@@ -147,6 +148,11 @@ const ProfileSettings: React.FC = () => {
 
       <main className="container mx-auto px-4 py-8 max-w-3xl space-y-8">
         <h2 className="text-3xl font-bold text-foreground">Account Management</h2>
+
+        {/* 2FA Settings Card */}
+        <TwoFactorAuthSettings onStatusChange={refreshProfile} />
+
+        <Separator />
 
         {/* Profile Details Card */}
         <Card>

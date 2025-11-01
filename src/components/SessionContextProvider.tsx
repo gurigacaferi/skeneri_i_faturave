@@ -7,6 +7,8 @@ interface UserProfile {
   id: string;
   csv_export_columns: string[] | null;
   role: 'user' | 'admin';
+  two_factor_enabled: boolean; // ADDED
+  two_factor_secret: string | null; // ADDED
 }
 
 interface SessionContextType {
@@ -14,7 +16,7 @@ interface SessionContextType {
   supabase: SupabaseClient;
   loading: boolean;
   profile: UserProfile | null;
-  authEvent: string | null; // New state to track the auth event type
+  authEvent: string | null;
   refreshProfile: () => Promise<void>;
 }
 
@@ -24,12 +26,12 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authEvent, setAuthEvent] = useState<string | null>(null); // State for the event
+  const [authEvent, setAuthEvent] = useState<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, csv_export_columns, role')
+      .select('id, csv_export_columns, role, two_factor_enabled, two_factor_secret') // UPDATED SELECT
       .eq('id', userId)
       .single();
 
@@ -39,10 +41,11 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
     } else if (data) {
       setProfile(data as UserProfile);
     } else {
+      // If profile doesn't exist, create a default one (should be handled by trigger, but fallback)
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
         .insert({ id: userId, csv_export_columns: null, role: 'user' })
-        .select('id, csv_export_columns, role')
+        .select('id, csv_export_columns, role, two_factor_enabled, two_factor_secret') // UPDATED SELECT
         .single();
       
       if (insertError) {
@@ -61,7 +64,7 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
 
   useEffect(() => {
     const handleSession = async (event: string, currentSession: Session | null) => {
-      setAuthEvent(event); // Store the event type
+      setAuthEvent(event);
       if (currentSession) {
         setSession(currentSession);
         await fetchProfile(currentSession.user.id);

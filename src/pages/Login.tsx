@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Lock } from 'lucide-react';
 
 // --- Schemas ---
 const loginSchema = z.object({
@@ -29,7 +29,12 @@ const recoverySchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
 });
 
+const twoFactorSchema = z.object({
+  token: z.string().length(6, { message: 'Token must be 6 digits' }),
+});
+
 type View = 'login' | 'signup' | 'recovery';
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 // --- Components ---
 
@@ -90,15 +95,88 @@ const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ set
   );
 };
 
+// --- 2FA Verification Component ---
+
+interface TwoFactorVerificationFormProps {
+  userId: string;
+  onVerificationSuccess: () => void;
+  onCancel: () => void;
+}
+
+const TwoFactorVerificationForm: React.FC<TwoFactorVerificationFormProps> = ({ userId, onVerificationSuccess, onCancel }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<z.infer<typeof twoFactorSchema>>({
+    resolver: zodResolver(twoFactorSchema),
+  });
+
+  const handleVerifyToken = async (values: z.infer<typeof twoFactorSchema>) => {
+    setIsSubmitting(true);
+    const toastId = showLoading('Verifying 2FA token...');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-2fa-token', {
+        body: {
+          token: values.token,
+          userId: userId,
+          action: 'login',
+        },
+      });
+
+      if (error) throw new Error(error.message);
+      if (data.error || !data.valid) throw new Error(data.message || 'Invalid token.');
+
+      showSuccess('2FA token verified. Logging in...');
+      onVerificationSuccess();
+    } catch (error: any) {
+      showError(error.message || '2FA verification failed. Please check your token.');
+    } finally {
+      dismissToast(toastId);
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center text-primary">
+          <Lock className="mr-2 h-5 w-5" /> Two-Factor Authentication
+        </CardTitle>
+        <CardDescription>Enter the 6-digit code from your authenticator app.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={form.handleSubmit(handleVerifyToken)} className="space-y-4">
+          <div>
+            <Label htmlFor="2fa-token">6-Digit Code</Label>
+            <Input id="2fa-token" type="text" inputMode="numeric" {...form.register('token')} maxLength={6} />
+            {form.formState.errors.token && <p className="text-sm text-red-500 mt-1">{form.formState.errors.token.message}</p>}
+          </div>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Verify Code
+          </Button>
+          <Button type="button" variant="link" className="w-full" onClick={onCancel} disabled={isSubmitting}>
+            Cancel Login
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+};
+
 
 // --- Main Component ---
 
 const Login = () => {
-  const { session, loading } = useSession();
+  const { session, loading, refreshProfile } = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // 2FA States
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+  const [pendingLoginUser, setPendingLoginUser] = useState<{ email: string, id: string } | null>(null);
+
   const initialTab = searchParams.get('tab') || 'login';
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab as 'login' | 'signup');
   const [view, setView] = useState<View>(initialTab === 'signup' ? 'signup' : 'login');
@@ -136,18 +214,80 @@ const Login = () => {
     });
   }, [searchParams, signUpForm]);
 
-  const handleLogin = async (values: z.infer<typeof loginSchema>) => {
+  const handleLogin = async (values: LoginFormValues) => {
     setIsSubmitting(true);
     const toastId = showLoading('Signing in...');
+    
     try {
-      const { error } = await supabase.auth.signInWithPassword(values);
+      // 1. Attempt standard login
+      const { data, error } = await supabase.auth.signInWithPassword(values);
+      
       if (error) throw error;
+      
+      // 2. Check if 2FA is required (requires fetching profile data)
+      if (data.user) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('two_factor_enabled')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error checking 2FA status:', profileError.message);
+          // Continue login if profile check fails, but log error
+        }
+
+        if (profileData?.two_factor_enabled) {
+          // 3. If 2FA is enabled, sign out the user immediately (to prevent session creation)
+          // and prompt for 2FA token.
+          await supabase.auth.signOut();
+          setPendingLoginUser({ email: values.email, id: data.user.id });
+          setTwoFactorRequired(true);
+          dismissToast(toastId);
+          showError('Two-Factor Authentication required.');
+          return;
+        }
+      }
+      
+      // If 2FA is not required or not enabled, proceed with successful login
+      // The SessionContextProvider handles the final SIGNED_IN event and navigation.
+      showSuccess('Logged in successfully!');
     } catch (error: any) {
       showError(error.message || 'Failed to sign in.');
     } finally {
       dismissToast(toastId);
       setIsSubmitting(false);
     }
+  };
+  
+  const handle2FASuccess = async () => {
+    if (!pendingLoginUser) return;
+    
+    // Re-authenticate the user using the password (since we signed them out earlier)
+    // This time, we skip the 2FA check since they just passed it.
+    const password = loginForm.getValues('password');
+    const { error } = await supabase.auth.signInWithPassword({
+      email: pendingLoginUser.email,
+      password: password,
+    });
+    
+    if (error) {
+      showError('Failed to complete login after 2FA verification.');
+      setTwoFactorRequired(false);
+      setPendingLoginUser(null);
+      return;
+    }
+    
+    // Success: SessionContextProvider handles the rest
+    setTwoFactorRequired(false);
+    setPendingLoginUser(null);
+    refreshProfile(); // Ensure profile data is fresh
+  };
+  
+  const handle2FACancel = () => {
+    setTwoFactorRequired(false);
+    setPendingLoginUser(null);
+    loginForm.reset();
   };
 
   const handleSignUp = async (values: z.infer<typeof signUpSchema>) => {
@@ -166,6 +306,7 @@ const Login = () => {
       if (data.error) throw new Error(data.error);
 
       showSuccess('Account created! Please sign in.');
+      // After successful sign up, attempt to log them in immediately
       await handleLogin({ email: values.email, password: values.password });
     } catch (error: any) {
       showError(error.message || 'Sign up failed. Please check your invitation code and details.');
@@ -197,6 +338,12 @@ const Login = () => {
         
         {view === 'recovery' ? (
           <PasswordRecoveryForm setView={setView} />
+        ) : twoFactorRequired && pendingLoginUser ? (
+          <TwoFactorVerificationForm 
+            userId={pendingLoginUser.id}
+            onVerificationSuccess={handle2FASuccess}
+            onCancel={handle2FACancel}
+          />
         ) : (
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'signup')} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
