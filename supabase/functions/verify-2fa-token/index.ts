@@ -2,20 +2,23 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Type': 'application/json',
+};
+
 serve(async (req) => {
-  // Simple and robust CORS preflight handler
+  // 1. Simple and robust CORS preflight handler
   if (req.method === 'OPTIONS') {
     return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      }
+      status: 200, // Return 200 OK for maximum compatibility
+      headers: corsHeaders,
     });
   }
 
-  // The actual logic for POST requests
+  // 2. The actual logic for POST requests
   try {
     const body = await req.json();
     const { token, userId, action } = body;
@@ -23,10 +26,7 @@ serve(async (req) => {
     if (!token || !userId || !action) {
       return new Response(JSON.stringify({ error: 'Token, userId, and action are required.' }), {
         status: 400,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
       });
     }
 
@@ -51,10 +51,7 @@ serve(async (req) => {
     if (profileError || !profile || !profile.two_factor_secret) {
       return new Response(JSON.stringify({ error: '2FA secret not found for user.' }), {
         status: 404,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
       });
     }
 
@@ -64,10 +61,7 @@ serve(async (req) => {
     if (!isValid) {
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {
         status: 401,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
       });
     }
 
@@ -88,20 +82,14 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ valid: true, message: 'Token verified successfully.' }), {
       status: 200,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
     });
 
   } catch (error) {
     console.error('Edge function error:', error.message);
     return new Response(JSON.stringify({ error: 'Internal Server Error', details: error.message }), {
       status: 500,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
     });
   }
 });
