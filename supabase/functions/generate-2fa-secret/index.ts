@@ -3,9 +3,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
 serve(async (req) => {
-  // Simple and robust CORS preflight handler
+  // Simple and robust CORS preflight handler with logging
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
+    console.log("Handling OPTIONS request for generate-2fa-secret");
+    const response = new Response(null, {
       status: 204, // No Content is also acceptable and common for preflight
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -13,12 +14,17 @@ serve(async (req) => {
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
       }
     });
+    console.log("OPTIONS response headers:", Object.fromEntries(response.headers));
+    console.log("OPTIONS response status:", response.status);
+    return response;
   }
 
   // The actual logic for POST requests
   try {
+    console.log("Handling POST request for generate-2fa-secret");
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.log("Authorization header missing");
       return new Response(JSON.stringify({ error: 'Unauthorized: No Authorization header' }), {
         status: 401,
         headers: { 
@@ -37,6 +43,7 @@ serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
+      console.log("Failed to get user", userError?.message);
       return new Response(JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }), {
         status: 401,
         headers: { 
@@ -48,6 +55,7 @@ serve(async (req) => {
 
     // 1. Generate a new secret
     const secret = authenticator.generateSecret();
+    console.log("Generated 2FA secret for user:", user.id);
     
     // 2. Temporarily store the secret in the profile (it will be confirmed later)
     const { error: updateError } = await supabase
@@ -64,6 +72,7 @@ serve(async (req) => {
     const serviceName = 'Fatural';
     const issuer = 'Fatural';
     const uri = authenticator.keyuri(user.email || user.id, issuer, secret);
+    console.log("Generated URI for user:", user.id);
 
     return new Response(JSON.stringify({
       secret: secret,
