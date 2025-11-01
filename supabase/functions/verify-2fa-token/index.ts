@@ -14,7 +14,8 @@ serve(async (req) => {
   }
 
   try {
-    const { token, userId, action } = await req.json();
+    const body = await req.json();
+    const { token, userId, action } = body;
 
     if (!token || !userId || !action) {
       return new Response(JSON.stringify({ error: 'Token, userId, and action are required.' }), {
@@ -42,6 +43,8 @@ serve(async (req) => {
       .single();
 
     if (profileError || !profile || !profile.two_factor_secret) {
+      // If the secret is null, it means 2FA was never set up or was disabled.
+      // This should only happen if the client is misbehaving, but we handle it gracefully.
       return new Response(JSON.stringify({ error: '2FA secret not found for user.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -72,7 +75,6 @@ serve(async (req) => {
     }
     
     // If verification is successful and the action is 'login', we just return valid: true
-    // The client will handle the login continuation.
 
     return new Response(JSON.stringify({ valid: true, message: 'Token verified successfully.' }), {
       status: 200,
