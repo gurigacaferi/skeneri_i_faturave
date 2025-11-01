@@ -43,9 +43,8 @@ async function generateHotp(secret: string, counter: number): Promise<string> {
   // Convert counter to 8-byte buffer (big-endian)
   const counterBuffer = new ArrayBuffer(8);
   const view = new DataView(counterBuffer);
-  // Set the counter value (which is a 32-bit integer) into the last 4 bytes of the 8-byte buffer
-  view.setUint32(4, counter, false); // false = big-endian
-  
+  view.setUint32(4, counter, false); // Set the lower 4 bytes (big-endian)
+
   const key = await crypto.subtle.importKey(
     'raw',
     secretBuffer,
@@ -121,6 +120,7 @@ Deno.serve(async (req) => {
     const { token, userId, action } = body;
 
     if (!token || !userId || !action) {
+      console.error('Missing required fields in request body.');
       return new Response(JSON.stringify({ error: 'Token, userId, and action are required.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
 
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceRoleKey) {
+      console.error('SUPABASE_SERVICE_ROLE_KEY is missing.');
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing.');
     }
 
@@ -145,6 +146,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (profileError || !profile || !profile.two_factor_secret) {
+      console.error(`2FA secret not found for user ${userId}. Error: ${profileError?.message}`);
       return new Response(JSON.stringify({ valid: false, message: '2FA secret not found for user.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -157,6 +159,7 @@ Deno.serve(async (req) => {
     const isValid = await totp.validateTotp(secret, token);
 
     if (!isValid) {
+      console.warn(`Invalid TOTP token received for user ${userId}. Token: ${token}`);
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -175,13 +178,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    console.log(`2FA token verified successfully for user ${userId}. Action: ${action}`);
     return new Response(JSON.stringify({ valid: true, message: 'Token verified successfully.' }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Edge function error:', error.message);
+    console.error('Unhandled Edge function error in verify-2fa-token:', error.message);
     return new Response(JSON.stringify({ error: 'Internal Server Error', details: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
