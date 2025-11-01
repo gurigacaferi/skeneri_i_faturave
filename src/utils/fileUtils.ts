@@ -6,7 +6,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 /**
  * Reads a File object and converts it into an array of base64 image strings.
- * Handles both image files and multi-page PDF files.
+ * Handles both image files and multi-page PDF files efficiently.
  * @param file The File object to process.
  * @returns A promise that resolves to an array of base64 image strings.
  */
@@ -14,10 +14,14 @@ export const fileToBase64Images = (file: File): Promise<string[]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = async (e) => {
-      const arrayBuffer = e.target?.result as ArrayBuffer;
+    reader.onerror = () => {
+      reject(new Error('Failed to read file.'));
+    };
 
-      if (file.type === 'application/pdf') {
+    // Handle PDF files by reading as an ArrayBuffer for processing
+    if (file.type === 'application/pdf') {
+      reader.onload = async (e) => {
+        const arrayBuffer = e.target?.result as ArrayBuffer;
         try {
           const pdf = await pdfjs.getDocument(arrayBuffer).promise;
           const base64Images: string[] = [];
@@ -29,8 +33,7 @@ export const fileToBase64Images = (file: File): Promise<string[]> => {
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             if (!context) {
-              reject(new Error('Could not get canvas context for PDF rendering.'));
-              return;
+              return reject(new Error('Could not get canvas context for PDF rendering.'));
             }
 
             canvas.height = viewport.height;
@@ -44,19 +47,20 @@ export const fileToBase64Images = (file: File): Promise<string[]> => {
           console.error('Error rendering PDF to image:', error);
           reject(new Error('Failed to render PDF pages.'));
         }
-      } else if (file.type.startsWith('image/')) {
-        // For images, just convert the whole file to base64 data URL
-        const base64String = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-        resolve([`data:${file.type};base64,${base64String}`]);
-      } else {
-        reject(new Error(`Unsupported file type: ${file.type}`));
-      }
-    };
+      };
+      reader.readAsArrayBuffer(file);
+    
+    // Handle Image files much more efficiently by reading directly as a Data URL
+    } else if (file.type.startsWith('image/')) {
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        resolve([dataUrl]);
+      };
+      reader.readAsDataURL(file);
 
-    reader.onerror = (error) => {
-      reject(new Error('Failed to read file.'));
-    };
-
-    reader.readAsArrayBuffer(file);
+    // Handle unsupported files
+    } else {
+      reject(new Error(`Unsupported file type: ${file.type}`));
+    }
   });
 };
