@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0?bundle';
+import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,14 +41,16 @@ Deno.serve(async (req) => {
       .single();
 
     if (profileError || !profile || !profile.two_factor_secret) {
-      return new Response(JSON.stringify({ error: '2FA secret not found for user.' }), {
+      // If the secret is missing, but 2FA is required for login, this is a failure.
+      // If action is 'setup', this is also a failure.
+      return new Response(JSON.stringify({ valid: false, message: '2FA secret not found for user.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const secret = profile.two_factor_secret;
-    const isValid = TOTP.validate({ otp: token, secret });
+    const isValid = authenticator.check(token, secret);
 
     if (!isValid) {
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {
@@ -58,6 +60,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'setup') {
+      // Only enable 2FA if the user is setting it up
       const { error: enableError } = await supabaseAdmin
         .from('profiles')
         .update({ two_factor_enabled: true })

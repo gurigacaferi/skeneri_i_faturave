@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0?bundle';
+import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,11 +37,22 @@ Deno.serve(async (req) => {
     }
 
     const issuer = 'Fatural';
-    const totp = TOTP.generate(user.email!, { issuer });
-    const secret = totp.secret;
-    const uri = totp.uri;
+    const secret = authenticator.generateSecret();
+    const uri = authenticator.keyuri(user.email!, issuer, secret);
     
-    const { error: updateError } = await supabase
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceRoleKey) {
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing.');
+    }
+
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      serviceRoleKey,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // Store the secret temporarily for setup verification
+    const { error: updateError } = await supabaseAdmin
       .from('profiles')
       .update({ two_factor_secret: secret, two_factor_enabled: false })
       .eq('id', user.id);
