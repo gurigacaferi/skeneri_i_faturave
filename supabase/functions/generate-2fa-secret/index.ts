@@ -1,5 +1,56 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { totp } from 'https://esm.sh/otplib@12.0.1';
+
+// --- Inlined TOTP Generation Utility (Proven to work in this environment) ---
+const SECRET_LENGTH = 20; // 160 bits for SHA1
+const DIGITS = 6;
+const PERIOD = 30;
+
+/**
+ * Generates a random base32 secret.
+ */
+function generateSecret(length: number = SECRET_LENGTH): string {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  
+  const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  let output = '';
+
+  for (let i = 0; i < bytes.length; i++) {
+    value = (value << 8) | bytes[i];
+    bits += 8;
+    while (bits >= 5) {
+      output += base32Chars[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) {
+    output += base32Chars[(value << (5 - bits)) & 31];
+  }
+  
+  return output.replace(/=/g, '');
+}
+
+/**
+ * Generates the key URI for authenticator apps.
+ */
+function generateKeyUri(email: string, issuer: string, secret: string): string {
+  const encodedIssuer = encodeURIComponent(issuer);
+  const encodedEmail = encodeURIComponent(email);
+  const label = `${encodedIssuer}:${encodedEmail}`;
+  
+  const params = new URLSearchParams({
+    secret: secret,
+    issuer: issuer,
+    algorithm: 'SHA1',
+    digits: DIGITS.toString(),
+    period: PERIOD.toString(),
+  });
+  
+  return `otpauth://totp/${label}?${params.toString()}`;
+}
+// --- End of Inlined Utility ---
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,8 +88,8 @@ Deno.serve(async (req) => {
     }
 
     const issuer = 'Fatural';
-    const secret = totp.generateSecret();
-    const uri = totp.keyuri(user.email!, issuer, secret);
+    const secret = generateSecret();
+    const uri = generateKeyUri(user.email!, issuer, secret);
     
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceRoleKey) {
