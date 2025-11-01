@@ -11,7 +11,7 @@ import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
 import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
-import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
+import { cn } from '@/lib/utils';
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -66,7 +66,8 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>([]);
 
-  const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
+  // Only show files that are pending, failed, or unsupported in the queue
+  const visibleFiles = files.filter(f => f.status !== 'processed');
   const filesToProcess = files.filter(f => f.status === 'pending');
 
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
@@ -192,8 +193,9 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const handleExpensesSaved = () => {
     setIsSplitterDialogOpen(false);
     setAllExtractedExpensesForDialog(null);
-    // Keep only files that failed processing (not unsupported files, which are already marked)
-    setFiles(prevFiles => prevFiles.filter(f => f.status === 'failed'));
+    // Only keep files that are in an error state (failed or unsupported).
+    // All others (pending, uploading, processing, processed) are cleared.
+    setFiles(prevFiles => prevFiles.filter(f => f.status === 'failed' || f.status === 'unsupported'));
     onReceiptProcessed();
   };
 
@@ -217,7 +219,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             </div>
           </div>
           
-          {files.length > 0 && (
+          {visibleFiles.length > 0 && (
             <div className="mt-6 space-y-4">
               <p className="text-sm font-medium text-foreground/80">Processing Queue:</p>
               
@@ -228,7 +230,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 </div>
               )}
 
-              {files.map(file => {
+              {visibleFiles.map(file => {
                 const isUnsupported = file.status === 'unsupported';
                 const isFailed = file.status === 'failed';
                 const isErrorState = isUnsupported || isFailed;
