@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.200.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import OpenAI from "npm:openai";
 // Use esm.sh for pdfjs-dist to ensure compatibility with Deno runtime
-import * as pdfjs from "https://esm.sh/pdfjs-dist@4.4.170/legacy/build/pdf.js";
+import * as pdfjs from "https://esm.sh/pdfjs-dist@4.4.170/build/pdf.js";
 import { createCanvas } from "https://deno.land/x/canvas@v1.4.1/mod.ts";
 
 // Define CORS headers locally to ensure deployment success
@@ -13,7 +13,7 @@ const corsHeaders = {
 
 // Explicitly set the worker source from the CDN
 // @ts-ignore
-pdfjs.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.4.170/legacy/build/pdf.worker.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.4.170/build/pdf.worker.js`;
 
 // Define the valid subcategories for validation
 const validSubcategories = [
