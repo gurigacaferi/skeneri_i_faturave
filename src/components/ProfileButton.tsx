@@ -39,10 +39,11 @@ const ProfileButton: React.FC = () => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        {/* Reverting to 'ghost' variant so the solid primary background of the Avatar is visible */}
         <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 hover:bg-primary/10">
-          <Avatar className="h-10 w-10 bg-primary text-primary-foreground">
-            <AvatarFallback>{initials}</AvatarFallback>
+          <Avatar className="h-10 w-10">
+            <AvatarFallback className="bg-primary text-primary-foreground">
+              {initials}
+            </AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
