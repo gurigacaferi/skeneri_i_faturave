@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { authenticator } from 'https://esm.sh/otplib@12.0.1';
+import { generateSecret, getOtpUri } from "https://deno.land/x/totp@v1.0.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/plain', // Explicitly set text/plain for preflight
+        'Content-Type': 'text/plain',
       },
     });
   }
@@ -44,10 +44,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. Generate a new secret
-    const secret = authenticator.generateSecret();
+    // 1. Generate a new secret using deno-totp
+    const secret = generateSecret();
     
-    // 2. Temporarily store the secret in the profile (it will be confirmed later)
+    // 2. Temporarily store the secret in the profile
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ two_factor_secret: secret, two_factor_enabled: false })
@@ -58,16 +58,15 @@ Deno.serve(async (req) => {
       throw new Error('Failed to save 2FA secret.');
     }
 
-    // 3. Generate the provisioning URI
-    const serviceName = 'Fatural';
+    // 3. Generate the provisioning URI using deno-totp
     const issuer = 'Fatural';
-    const uri = authenticator.keyuri(user.email || user.id, issuer, secret);
+    const uri = getOtpUri(user.email!, issuer, secret);
 
     return new Response(JSON.stringify({
       secret: secret,
       uri: uri,
       email: user.email,
-      serviceName: serviceName,
+      serviceName: issuer,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { authenticator } from 'https://esm.sh/otplib@12.0.1';
+import { validateToken } from "https://deno.land/x/totp@v1.0.1/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/plain', // Explicitly set text/plain for preflight
+        'Content-Type': 'text/plain',
       },
     });
   }
@@ -31,7 +31,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Use Service Role Key to fetch the secret securely (bypassing RLS)
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceRoleKey) {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing.');
@@ -57,7 +56,8 @@ Deno.serve(async (req) => {
     }
 
     const secret = profile.two_factor_secret;
-    const isValid = authenticator.check(token, secret);
+    // Use deno-totp's validateToken. It returns the delta or null if invalid.
+    const isValid = validateToken(token, secret) !== null;
 
     if (!isValid) {
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {
@@ -66,7 +66,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // If verification is successful and the action is 'setup', enable 2FA
     if (action === 'setup') {
       const { error: enableError } = await supabaseAdmin
         .from('profiles')
@@ -78,8 +77,6 @@ Deno.serve(async (req) => {
         throw new Error('Failed to enable 2FA in database.');
       }
     }
-    
-    // If verification is successful and the action is 'login', we just return valid: true
 
     return new Response(JSON.stringify({ valid: true, message: 'Token verified successfully.' }), {
       status: 200,
