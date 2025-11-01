@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0';
+import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0?bundle';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,7 +48,6 @@ Deno.serve(async (req) => {
     }
 
     const secret = profile.two_factor_secret;
-    // Use @levminer/totp's validate method. It returns a boolean.
     const isValid = TOTP.validate({ otp: token, secret });
 
     if (!isValid) {

@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0';
+import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0?bundle';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,13 +36,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. Generate a new secret and URI using @levminer/totp
     const issuer = 'Fatural';
     const totp = TOTP.generate(user.email!, { issuer });
     const secret = totp.secret;
     const uri = totp.uri;
     
-    // 2. Temporarily store the secret in the profile
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ two_factor_secret: secret, two_factor_enabled: false })
