@@ -225,8 +225,7 @@ const Login = () => {
       if (error) throw error;
       
       if (data.user) {
-        // 2. Check 2FA status using the service role client (or current user's client if RLS allows)
-        // We use the current user's client here since the session is active, and RLS allows profile read.
+        // 2. Check 2FA status using the current user's client
         const { data: profileData } = await supabase
           .from('profiles')
           .select('two_factor_enabled')
@@ -251,7 +250,7 @@ const Login = () => {
       // 5. No 2FA, normal login successful.
       dismissToast(toastId);
       showSuccess('Logged in successfully!');
-      // Navigation handled by useEffect now
+      navigate('/'); // Explicit navigation for non-2FA login
       
     } catch (error: any) {
       dismissToast(toastId);
@@ -266,7 +265,6 @@ const Login = () => {
     // Re-authenticate the user with their password now that the token is verified.
     const password = loginForm.getValues('password');
     
-    // We don't need to check 2FA again here, just sign them in.
     const { error } = await supabase.auth.signInWithPassword({
       email: pendingLoginUser.email,
       password: password,
@@ -279,9 +277,10 @@ const Login = () => {
       return;
     }
     
-    // Success, the useEffect will handle navigation after the session updates.
+    // Success, navigate to the dashboard immediately.
     setTwoFactorRequired(false);
     setPendingLoginUser(null);
+    navigate('/'); // Explicit navigation after successful 2FA login
   };
   
   const handle2FACancel = () => {
@@ -323,12 +322,6 @@ const Login = () => {
       </div>
     );
   }
-
-  // If a session exists AND 2FA is NOT required, navigate away.
-  // This is handled by the useEffect now.
-  // if (session && !twoFactorRequired) {
-  //   return null;
-  // }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
