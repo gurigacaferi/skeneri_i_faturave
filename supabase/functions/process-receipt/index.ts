@@ -97,7 +97,7 @@ serve(async (req) => {
       If any other information is missing, use a reasonable default or null.`;
 
     const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o", // Explicitly set to gpt-4o as the most capable available model
       messages: [
         { role: "system", content: systemPrompt },
         {
