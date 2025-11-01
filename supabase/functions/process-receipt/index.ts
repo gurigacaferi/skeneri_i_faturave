@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.200.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { GoogleGenerativeAI } from "npm:@google/generative-ai";
+import OpenAI from "npm:openai";
 
 // Define CORS headers locally to ensure deployment success
 const corsHeaders = {
@@ -63,36 +63,22 @@ serve(async (req) => {
     const { base64Image, receiptId, pageNumber } = await req.json();
 
     if (!receiptId || !base64Image || !pageNumber) {
-      return new Response(JSON.stringify({ error: "Missing receiptId, base64Image, or pageNumber from client." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        return new Response(JSON.stringify({ error: "Missing receiptId, base64Image, or pageNumber from client." }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
     }
 
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiApiKey) {
-      throw new Error("Gemini API Key is not configured.");
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiApiKey) {
+      throw new Error("OpenAI API Key is not configured.");
     }
-    const genAI = new GoogleGenerativeAI(geminiApiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    const mimeTypeMatch = base64Image.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+).*,.*/);
-    if (!mimeTypeMatch) {
-      throw new Error("Invalid base64 image format.");
-    }
-    const mimeType = mimeTypeMatch[1];
-    const imageData = base64Image.split(',')[1];
-
-    const imagePart = {
-      inlineData: {
-        data: imageData,
-        mimeType: mimeType,
-      },
-    };
-
-    const prompt = `
-      Analyze the receipt image and extract all expense items into a valid JSON object with a single key "expenses" which is an array.
-      Do not include markdown formatting like \`\`\`json.
-      Each object in the array must have these fields:
+    const systemPrompt = `You are an expert AI assistant specializing in accurately extracting structured data from receipt images. Your task is to return a clean, valid JSON object based on the user's request, without any additional commentary or explanations.`;
+    const chatGptPrompt = `
+      Carefully analyze the following receipt image and extract all expense items into a JSON array named "expenses".
+      **INSTRUCTION:** You must process every line item individually.
+      Each object in the array must have the following fields:
       - "name": (string) The name of the item or service.
       - "category": (string) **IMPORTANT: This MUST be one of the exact strings from the list below.**
       - "amount": (number) The total price of the item.
@@ -110,12 +96,28 @@ serve(async (req) => {
       **VALID CATEGORIES:** ${validSubcategories.join(", ")}
       If any other information is missing, use a reasonable default or null.`;
 
-    const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    const text = response.text();
+    const chatCompletion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: chatGptPrompt },
+            { type: "image_url", image_url: { url: base64Image, detail: "high" } },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 4096,
+    });
 
-    const jsonString = text.replace(/```json\n?|```/g, "").trim();
-    const parsed = JSON.parse(jsonString);
+    const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
+    if (!aiResponseContent) {
+      return new Response(JSON.stringify({ expenses: [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const parsed = JSON.parse(aiResponseContent);
     const extractedExpenses = Array.isArray(parsed.expenses) ? parsed.expenses : [];
 
     const validatedExpenses = extractedExpenses.map((expense: any) => {
