@@ -209,10 +209,16 @@ const Login = () => {
 
   // Redirect if a full session is established and 2FA is NOT pending
   useEffect(() => {
-    if (!loading && session && !twoFactorRequired) {
+    // Do not navigate if a login process is active or if 2FA is pending.
+    if (isSubmitting || twoFactorRequired) {
+      return;
+    }
+
+    // If there's a valid session and we're not in a pending state, navigate away.
+    if (!loading && session) {
       navigate('/');
     }
-  }, [session, loading, navigate, twoFactorRequired]);
+  }, [session, loading, navigate, isSubmitting, twoFactorRequired]);
 
 
   const handleLogin = async (values: LoginFormValues) => {
