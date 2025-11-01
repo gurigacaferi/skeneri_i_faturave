@@ -97,7 +97,7 @@ serve(async (req) => {
       If any other information is missing, use a reasonable default or null.`;
 
     const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4-turbo",
       messages: [
         { role: "system", content: systemPrompt },
         {
@@ -109,7 +109,7 @@ serve(async (req) => {
         },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 2000,
+      max_tokens: 4096,
     });
 
     const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
