@@ -9,12 +9,7 @@ import { useSession } from '@/components/SessionContextProvider';
 import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTriangle } from 'lucide-react';
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
-import { Progress } from '@/components/ui/progress'; // Import Progress component
-import * as pdfjs from 'pdfjs-dist';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?url';
-
-// Set the worker source for pdfjs-dist to be bundled with Vite
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+import { Progress } from '@/components/ui/progress';
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -42,34 +37,6 @@ interface UploadedFile extends File {
   errorMessage?: string;
 }
 
-/**
- * Converts the first page of a PDF file to a Base64 JPEG image string.
- * @param file The PDF File object.
- * @returns A promise that resolves to the Base64 data URL of the image.
- */
-const convertPdfToImageBase64 = async (file: File): Promise<string> => {
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-  const page = await pdf.getPage(1); // Get the first page
-
-  const viewport = page.getViewport({ scale: 2.0 }); // Scale up for better resolution
-  const canvas = document.createElement('canvas');
-  const canvasContext = canvas.getContext('2d');
-  
-  if (!canvasContext) {
-    throw new Error("Failed to get canvas context.");
-  }
-
-  canvas.height = viewport.height;
-  canvas.width = viewport.width;
-
-  await page.render({ canvasContext, viewport }).promise;
-
-  // Convert canvas content to JPEG Base64 data URL
-  return canvas.toDataURL('image/jpeg', 0.9);
-};
-
-
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -78,7 +45,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>(null);
 
-  // Define pendingFiles here so it's available for rendering
   const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed');
 
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
@@ -105,7 +71,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       'image/png': ['.png'],
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/webp': ['.webp'],
-      'application/pdf': ['.pdf'], // Re-enabled PDF
+      'application/pdf': ['.pdf'],
       'image/gif': ['.gif'],
       'image/bmp': ['.bmp'],
       'image/heic': ['.heic'],
@@ -125,7 +91,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   };
 
   const handleFileUpload = async () => {
-    // Use the already defined pendingFiles variable
     if (pendingFiles.length === 0) { showError('No files selected or pending processing.'); return; }
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
@@ -139,21 +104,16 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let receiptId: string | undefined;
       
       try {
-        // 1. Upload file to Supabase Storage (30% progress)
+        // 1. Upload file to Supabase Storage
         const fileExtension = file.name.split('.').pop();
         const storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
-
         const { error: storageError } = await supabase.storage
           .from('receipts')
-          .upload(storagePath, file, {
-            cacheControl: '3600',
-            upsert: false,
-          });
-
+          .upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
         updateFileState(file.id, { progress: 30 });
 
-        // 2. Insert receipt record with storage path (10% progress)
+        // 2. Insert receipt record with storage path
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -165,31 +125,14 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           })
           .select('id')
           .single();
-
         if (receiptInsertError) throw new Error(`DB insert failed: ${receiptInsertError.message}`);
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 40, receiptId, status: 'processing' });
 
-        // 3. Read file to base64 for AI processing
-        let base64Image: string;
-        if (file.type === 'application/pdf') {
-          // Convert PDF to image Base64 string
-          base64Image = await convertPdfToImageBase64(file);
-        } else {
-          // Read image file to Base64 data URL
-          base64Image = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = (error) => reject(error);
-          });
-        }
-
-        // 4. Invoke Edge Function with base64 image (50% progress)
+        // 3. Invoke Edge Function with storage_path
         const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Image, filename: file.name, batchId: selectedBatchId, receiptId },
+          body: { storage_path: storagePath, filename: file.name, batchId: selectedBatchId, receiptId },
         });
-        
         updateFileState(file.id, { progress: 90 });
 
         if (edgeFunctionError) throw new Error(edgeFunctionError.message);
@@ -197,7 +140,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
         
-        // 5. Update receipt status to processed (10% progress)
+        // 4. Update receipt status to processed
         await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
         updateFileState(file.id, { progress: 100, status: 'processed' });
 
@@ -205,8 +148,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         hasError = true;
         const errorMessage = error.message || 'Unknown error during processing.';
         updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
-        
-        // If processing failed, mark receipt as failed if it was created
         if (receiptId) {
             await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
         }
@@ -224,14 +165,12 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       showError('AI could not extract any expenses from the uploaded files.');
     }
     
-    // Trigger a refresh in the parent component (ExpensesList)
     onReceiptProcessed();
   };
 
   const handleExpensesSaved = () => {
     setIsSplitterDialogOpen(false);
     setAllExtractedExpensesForDialog(null);
-    // Clear only successfully processed files from the list
     setFiles(prevFiles => prevFiles.filter(f => f.status === 'failed'));
     onReceiptProcessed();
   };
@@ -260,7 +199,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             <div className="mt-6 space-y-4">
               <p className="text-sm font-medium text-foreground/80">Processing Queue:</p>
               
-              {/* Overall Progress Bar */}
               {isUploading && (
                 <div className="space-y-2">
                   <Progress value={totalProgress} className="h-2" />
@@ -268,7 +206,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 </div>
               )}
 
-              {/* Individual File Status */}
               {files.map(file => (
                 <div key={file.id} className="flex flex-col p-3 border rounded-md transition-colors" data-status={file.status}>
                   <div className="flex items-center justify-between">
@@ -304,12 +241,10 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                     </div>
                   </div>
                   
-                  {/* Progress Bar for active files */}
                   {(file.status === 'uploading' || file.status === 'processing') && (
                     <Progress value={file.progress} className="h-1 mt-2" />
                   )}
                   
-                  {/* Error Message */}
                   {file.status === 'failed' && file.errorMessage && (
                     <p className="text-xs text-destructive mt-1 truncate">Error: {file.errorMessage}</p>
                   )}
