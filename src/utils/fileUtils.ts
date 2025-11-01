@@ -28,8 +28,8 @@ export const fileToBase64Images = (file: File): Promise<string[]> => {
 
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
-            // OPTIMIZATION: Reduced scale from 2.0 to 1.5 to lower image resolution
-            const viewport = page.getViewport({ scale: 1.5 });
+            // OPTIMIZATION: Reduced scale to 1.2 to lower image resolution
+            const viewport = page.getViewport({ scale: 1.2 });
             
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
@@ -41,8 +41,8 @@ export const fileToBase64Images = (file: File): Promise<string[]> => {
             canvas.width = viewport.width;
 
             await page.render({ canvasContext: context, viewport }).promise;
-            // OPTIMIZATION: Reduced JPEG quality from 0.9 to 0.8 to decrease file size
-            base64Images.push(canvas.toDataURL('image/jpeg', 0.8));
+            // OPTIMIZATION: Reduced JPEG quality to 0.7 to decrease file size
+            base64Images.push(canvas.toDataURL('image/jpeg', 0.7));
           }
           resolve(base64Images);
         } catch (error) {
