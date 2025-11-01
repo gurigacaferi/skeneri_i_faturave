@@ -207,15 +207,26 @@ const Login = () => {
     });
   }, [searchParams, signUpForm]);
 
+  // Redirect if a full session is established and 2FA is NOT pending
+  useEffect(() => {
+    if (!loading && session && !twoFactorRequired) {
+      navigate('/');
+    }
+  }, [session, loading, navigate, twoFactorRequired]);
+
+
   const handleLogin = async (values: LoginFormValues) => {
     setIsSubmitting(true);
     const toastId = showLoading('Signing in...');
     
     try {
+      // 1. Attempt standard login
       const { data, error } = await supabase.auth.signInWithPassword(values);
       if (error) throw error;
       
       if (data.user) {
+        // 2. Check 2FA status using the service role client (or current user's client if RLS allows)
+        // We use the current user's client here since the session is active, and RLS allows profile read.
         const { data: profileData } = await supabase
           .from('profiles')
           .select('two_factor_enabled')
@@ -223,10 +234,10 @@ const Login = () => {
           .single();
 
         if (profileData?.two_factor_enabled) {
-          // 2FA is required. Sign out to invalidate the temporary session.
+          // 3. 2FA is required. Sign out the temporary session immediately.
           await supabase.auth.signOut();
           
-          // Update state to show the 2FA form.
+          // 4. Update state to show the 2FA form.
           setPendingLoginUser({ email: values.email, id: data.user.id });
           setTwoFactorRequired(true);
           
@@ -237,10 +248,10 @@ const Login = () => {
         }
       }
       
-      // No 2FA, normal login successful.
+      // 5. No 2FA, normal login successful.
       dismissToast(toastId);
       showSuccess('Logged in successfully!');
-      navigate('/');
+      // Navigation handled by useEffect now
       
     } catch (error: any) {
       dismissToast(toastId);
@@ -254,6 +265,8 @@ const Login = () => {
     
     // Re-authenticate the user with their password now that the token is verified.
     const password = loginForm.getValues('password');
+    
+    // We don't need to check 2FA again here, just sign them in.
     const { error } = await supabase.auth.signInWithPassword({
       email: pendingLoginUser.email,
       password: password,
@@ -266,10 +279,9 @@ const Login = () => {
       return;
     }
     
-    // Success, navigate to the dashboard.
+    // Success, the useEffect will handle navigation after the session updates.
     setTwoFactorRequired(false);
     setPendingLoginUser(null);
-    navigate('/');
   };
   
   const handle2FACancel = () => {
@@ -312,11 +324,11 @@ const Login = () => {
     );
   }
 
-  if (session) {
-    // This is a fallback, but navigation should be handled by the login functions.
-    navigate('/');
-    return null;
-  }
+  // If a session exists AND 2FA is NOT required, navigate away.
+  // This is handled by the useEffect now.
+  // if (session && !twoFactorRequired) {
+  //   return null;
+  // }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
