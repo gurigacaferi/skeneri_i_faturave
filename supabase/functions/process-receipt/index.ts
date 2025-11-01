@@ -1,6 +1,11 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
-import { corsHeaders } from '../_shared/cors.ts';
+
+// Inlined corsHeaders to fix the 'Module not found' deployment error
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 const SYSTEM_PROMPT = `
 You are an expert accountant AI. Your task is to extract structured expense data from receipt images.
