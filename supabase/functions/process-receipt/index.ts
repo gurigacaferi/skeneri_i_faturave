@@ -96,34 +96,31 @@ serve(async (req) => {
       **VALID CATEGORIES:** ${validSubcategories.join(", ")}
       If any other information is missing, use a reasonable default or null.`;
 
-    let allValidatedExpenses: any[] = [];
-    let pageNum = 1;
-
-    for (const base64Image of base64Images) {
-      try {
-        const chatCompletion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: chatGptPrompt },
-                { type: "image_url", image_url: { url: base64Image, detail: "high" } },
-              ],
-            },
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 2000,
-        });
-
+    // Process all images in parallel
+    const processingPromises = base64Images.map((base64Image, index) => {
+      const pageNum = index + 1;
+      return openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: chatGptPrompt },
+              { type: "image_url", image_url: { url: base64Image, detail: "high" } },
+            ],
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+      }).then(chatCompletion => {
         const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
-        if (!aiResponseContent) continue;
+        if (!aiResponseContent) return [];
 
         const parsed = JSON.parse(aiResponseContent);
         const extractedExpenses = Array.isArray(parsed.expenses) ? parsed.expenses : [];
 
-        const validatedExpenses = extractedExpenses.map((expense: any) => {
+        return extractedExpenses.map((expense: any) => {
           let vatCode = validVatCodes.includes(expense.vat_code) ? expense.vat_code : "No VAT";
           let category = validSubcategories.includes(expense.category) ? expense.category : "690-09 Te tjera";
           return {
@@ -140,15 +137,17 @@ serve(async (req) => {
             description: expense.description || null,
             sasia: parseFloat(expense.sasia) || 1,
             njesia: validUnits.includes(expense.njesia) ? expense.njesia : "cope",
-            pageNumber: pageNum, // Add the page number to each expense
+            pageNumber: pageNum,
           };
         });
-        allValidatedExpenses.push(...validatedExpenses);
-      } catch (error) {
-        console.error("Error processing a page with OpenAI:", error.message);
-      }
-      pageNum++;
-    }
+      }).catch(error => {
+        console.error(`Error processing page ${pageNum} with OpenAI:`, error.message);
+        return []; // Return an empty array for this page on error to not fail the whole batch
+      });
+    });
+
+    const results = await Promise.all(processingPromises);
+    const allValidatedExpenses = results.flat();
 
     return new Response(JSON.stringify({
       message: "Receipt processed successfully",
