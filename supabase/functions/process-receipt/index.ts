@@ -60,10 +60,10 @@ serve(async (req) => {
   }
 
   try {
-    const { base64Image, receiptId, pageNumber } = await req.json();
+    const { base64Images, receiptId } = await req.json();
 
-    if (!receiptId || !base64Image || !pageNumber) {
-        return new Response(JSON.stringify({ error: "Missing receiptId, base64Image, or pageNumber from client." }), {
+    if (!receiptId || !base64Images || !Array.isArray(base64Images) || base64Images.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing receiptId or base64Images from client." }), {
             status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
     }
@@ -96,55 +96,64 @@ serve(async (req) => {
       **VALID CATEGORIES:** ${validSubcategories.join(", ")}
       If any other information is missing, use a reasonable default or null.`;
 
-    const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: chatGptPrompt },
-            { type: "image_url", image_url: { url: base64Image, detail: "high" } },
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 4096,
-    });
+    let allValidatedExpenses: any[] = [];
+    let pageNum = 1;
 
-    const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
-    if (!aiResponseContent) {
-      return new Response(JSON.stringify({ expenses: [] }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    for (const base64Image of base64Images) {
+      try {
+        const chatCompletion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: chatGptPrompt },
+                { type: "image_url", image_url: { url: base64Image, detail: "high" } },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 2000,
+        });
+
+        const aiResponseContent = chatCompletion.choices?.[0]?.message?.content;
+        if (!aiResponseContent) continue;
+
+        const parsed = JSON.parse(aiResponseContent);
+        const extractedExpenses = Array.isArray(parsed.expenses) ? parsed.expenses : [];
+
+        const validatedExpenses = extractedExpenses.map((expense: any) => {
+          let vatCode = validVatCodes.includes(expense.vat_code) ? expense.vat_code : "No VAT";
+          let category = validSubcategories.includes(expense.category) ? expense.category : "690-09 Te tjera";
+          return {
+            name: expense.name || "Unknown Item",
+            category: category,
+            amount: parseFloat(expense.amount) || 0,
+            date: expense.date || new Date().toISOString().split("T")[0],
+            merchant: expense.merchant || null,
+            vat_code: vatCode,
+            tvsh_percentage: getPercentageFromVatCode(vatCode),
+            nui: expense.nui || null,
+            nr_fiskal: expense.nr_fiskal || null,
+            numri_i_tvsh_se: expense.numri_i_tvsh_se || null,
+            description: expense.description || null,
+            sasia: parseFloat(expense.sasia) || 1,
+            njesia: validUnits.includes(expense.njesia) ? expense.njesia : "cope",
+            pageNumber: pageNum, // Add the page number to each expense
+          };
+        });
+        allValidatedExpenses.push(...validatedExpenses);
+      } catch (error) {
+        console.error("Error processing a page with OpenAI:", error.message);
+      }
+      pageNum++;
     }
 
-    const parsed = JSON.parse(aiResponseContent);
-    const extractedExpenses = Array.isArray(parsed.expenses) ? parsed.expenses : [];
-
-    const validatedExpenses = extractedExpenses.map((expense: any) => {
-      let vatCode = validVatCodes.includes(expense.vat_code) ? expense.vat_code : "No VAT";
-      let category = validSubcategories.includes(expense.category) ? expense.category : "690-09 Te tjera";
-      return {
-        name: expense.name || "Unknown Item",
-        category: category,
-        amount: parseFloat(expense.amount) || 0,
-        date: expense.date || new Date().toISOString().split("T")[0],
-        merchant: expense.merchant || null,
-        vat_code: vatCode,
-        tvsh_percentage: getPercentageFromVatCode(vatCode),
-        nui: expense.nui || null,
-        nr_fiskal: expense.nr_fiskal || null,
-        numri_i_tvsh_se: expense.numri_i_tvsh_se || null,
-        description: expense.description || null,
-        sasia: parseFloat(expense.sasia) || 1,
-        njesia: validUnits.includes(expense.njesia) ? expense.njesia : "cope",
-        pageNumber: pageNumber,
-      };
-    });
-
     return new Response(JSON.stringify({
-      message: `Page ${pageNumber} processed successfully`,
+      message: "Receipt processed successfully",
       receiptId: receiptId,
-      expenses: validatedExpenses,
+      expenses: allValidatedExpenses,
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error: any) {
