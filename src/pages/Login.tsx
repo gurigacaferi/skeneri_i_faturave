@@ -168,7 +168,7 @@ const TwoFactorVerificationForm: React.FC<TwoFactorVerificationFormProps> = ({ u
 // --- Main Component ---
 
 const Login = () => {
-  const { session, loading, refreshProfile } = useSession();
+  const { session, loading } = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -194,13 +194,6 @@ const Login = () => {
     },
   });
 
-  // Effect to handle navigation for authenticated users
-  useEffect(() => {
-    if (!loading && session) {
-      navigate('/');
-    }
-  }, [session, loading, navigate]);
-
   // Effect to sync view with URL parameters (e.g., for sign-up links)
   useEffect(() => {
     const tab = searchParams.get('tab') || 'login';
@@ -219,52 +212,47 @@ const Login = () => {
     const toastId = showLoading('Signing in...');
     
     try {
-      // 1. Attempt standard login
       const { data, error } = await supabase.auth.signInWithPassword(values);
-      
       if (error) throw error;
       
-      // 2. Check if 2FA is required (requires fetching profile data)
       if (data.user) {
-        const { data: profileData, error: profileError } = await supabase
+        const { data: profileData } = await supabase
           .from('profiles')
           .select('two_factor_enabled')
           .eq('id', data.user.id)
           .single();
 
-        if (profileError && profileError.code !== 'PGRST116') {
-          console.error('Error checking 2FA status:', profileError.message);
-          // Continue login if profile check fails, but log error
-        }
-
         if (profileData?.two_factor_enabled) {
-          // 3. If 2FA is enabled, sign out the user immediately (to prevent session creation)
-          // and prompt for 2FA token.
+          // 2FA is required. Sign out to invalidate the temporary session.
           await supabase.auth.signOut();
+          
+          // Update state to show the 2FA form.
           setPendingLoginUser({ email: values.email, id: data.user.id });
           setTwoFactorRequired(true);
+          
           dismissToast(toastId);
           showError('Two-Factor Authentication required.');
-          return;
+          setIsSubmitting(false);
+          return; // Stop here and wait for 2FA input.
         }
       }
       
-      // If 2FA is not required or not enabled, proceed with successful login
-      // The SessionContextProvider handles the final SIGNED_IN event and navigation.
+      // No 2FA, normal login successful.
+      dismissToast(toastId);
       showSuccess('Logged in successfully!');
+      navigate('/');
+      
     } catch (error: any) {
-      showError(error.message || 'Failed to sign in.');
-    } finally {
       dismissToast(toastId);
       setIsSubmitting(false);
+      showError(error.message || 'Failed to sign in.');
     }
   };
   
   const handle2FASuccess = async () => {
     if (!pendingLoginUser) return;
     
-    // Re-authenticate the user using the password (since we signed them out earlier)
-    // This time, we skip the 2FA check since they just passed it.
+    // Re-authenticate the user with their password now that the token is verified.
     const password = loginForm.getValues('password');
     const { error } = await supabase.auth.signInWithPassword({
       email: pendingLoginUser.email,
@@ -278,10 +266,10 @@ const Login = () => {
       return;
     }
     
-    // Success: SessionContextProvider handles the rest
+    // Success, navigate to the dashboard.
     setTwoFactorRequired(false);
     setPendingLoginUser(null);
-    refreshProfile(); // Ensure profile data is fresh
+    navigate('/');
   };
   
   const handle2FACancel = () => {
@@ -325,7 +313,9 @@ const Login = () => {
   }
 
   if (session) {
-    return null; // The navigation useEffect will handle the redirect
+    // This is a fallback, but navigation should be handled by the login functions.
+    navigate('/');
+    return null;
   }
 
   return (
