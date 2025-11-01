@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { validateToken } from "https://deno.land/x/totp@v1.0.1/mod.ts";
+import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,18 +8,10 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  // 1. Simple and robust CORS preflight handler
   if (req.method === 'OPTIONS') {
-    return new Response("ok", {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/plain',
-      },
-    });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
-  // 2. The actual logic for POST requests
   try {
     const body = await req.json();
     const { token, userId, action } = body;
@@ -56,8 +48,8 @@ Deno.serve(async (req) => {
     }
 
     const secret = profile.two_factor_secret;
-    // Use deno-totp's validateToken. It returns the delta or null if invalid.
-    const isValid = validateToken(token, secret) !== null;
+    // Use @levminer/totp's validate method. It returns a boolean.
+    const isValid = TOTP.validate({ otp: token, secret });
 
     if (!isValid) {
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {

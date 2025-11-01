@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { generateSecret, getOtpUri } from "https://deno.land/x/totp@v1.0.1/mod.ts";
+import { TOTP } from 'https://esm.sh/@levminer/totp@3.1.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,18 +8,10 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  // 1. Simple and robust CORS preflight handler
   if (req.method === 'OPTIONS') {
-    return new Response("ok", {
-      status: 200,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/plain',
-      },
-    });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
-  // 2. The actual logic for POST requests
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -44,8 +36,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. Generate a new secret using deno-totp
-    const secret = generateSecret();
+    // 1. Generate a new secret and URI using @levminer/totp
+    const issuer = 'Fatural';
+    const totp = TOTP.generate(user.email!, { issuer });
+    const secret = totp.secret;
+    const uri = totp.uri;
     
     // 2. Temporarily store the secret in the profile
     const { error: updateError } = await supabase
@@ -57,10 +52,6 @@ Deno.serve(async (req) => {
       console.error('Error saving 2FA secret:', updateError.message);
       throw new Error('Failed to save 2FA secret.');
     }
-
-    // 3. Generate the provisioning URI using deno-totp
-    const issuer = 'Fatural';
-    const uri = getOtpUri(user.email!, issuer, secret);
 
     return new Response(JSON.stringify({
       secret: secret,
