@@ -2,16 +2,21 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
-// UPDATED corsHeaders to include Access-Control-Allow-Methods
+// UPDATED corsHeaders for maximum compatibility
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS', // Added POST and OPTIONS
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400', // Cache preflight response for 24 hours
 }
 
 serve(async (req) => {
+  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { 
+      status: 200, // Explicitly set status to 200
+      headers: corsHeaders 
+    });
   }
 
   try {
@@ -44,7 +49,6 @@ serve(async (req) => {
       .single();
 
     if (profileError || !profile || !profile.two_factor_secret) {
-      // If the secret is null, it means 2FA was never set up or was disabled.
       return new Response(JSON.stringify({ error: '2FA secret not found for user.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
