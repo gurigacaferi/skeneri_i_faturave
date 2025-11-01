@@ -19,10 +19,16 @@ const ProfileButton: React.FC = () => {
   const { session, profile, supabase } = useSession();
   const navigate = useNavigate();
 
-  const getInitials = (firstName: string | null, lastName: string | null) => {
+  const getInitials = (firstName: string | null, lastName: string | null, email: string) => {
     const first = firstName ? firstName[0] : '';
     const last = lastName ? lastName[0] : '';
-    return (first + last).toUpperCase() || 'U';
+    
+    if (first || last) {
+      return (first + last).toUpperCase();
+    }
+    
+    // Fallback to the first letter of the email
+    return email[0]?.toUpperCase() || 'U';
   };
 
   const handleLogout = async () => {
@@ -33,8 +39,8 @@ const ProfileButton: React.FC = () => {
 
   if (!session) return null;
 
-  const initials = getInitials(profile?.first_name || null, profile?.last_name || null);
   const email = session.user.email || 'N/A';
+  const initials = getInitials(profile?.first_name || null, profile?.last_name || null, email);
 
   return (
     <DropdownMenu>
