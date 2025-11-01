@@ -60,7 +60,6 @@ serve(async (req) => {
   }
 
   try {
-    // Expect base64Images array and receiptId from the client
     const { base64Images, receiptId } = await req.json();
 
     if (!receiptId || !base64Images || !Array.isArray(base64Images) || base64Images.length === 0) {
@@ -98,6 +97,7 @@ serve(async (req) => {
       If any other information is missing, use a reasonable default or null.`;
 
     let allValidatedExpenses: any[] = [];
+    let pageNum = 1;
 
     for (const base64Image of base64Images) {
       try {
@@ -140,13 +140,14 @@ serve(async (req) => {
             description: expense.description || null,
             sasia: parseFloat(expense.sasia) || 1,
             njesia: validUnits.includes(expense.njesia) ? expense.njesia : "cope",
+            pageNumber: pageNum, // Add the page number to each expense
           };
         });
         allValidatedExpenses.push(...validatedExpenses);
       } catch (error) {
         console.error("Error processing a page with OpenAI:", error.message);
-        // Continue to the next page even if one fails
       }
+      pageNum++;
     }
 
     return new Response(JSON.stringify({

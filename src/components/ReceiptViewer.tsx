@@ -2,26 +2,26 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from '@/components/SessionContextProvider';
-import { Loader2, ImageOff, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, ImageOff, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { Button } from '@/components/ui/button';
 import * as pdfjs from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?url';
 
-// Set the worker source for pdfjs-dist
 pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface ReceiptViewerProps {
   receiptId: string | null;
+  pageToDisplay?: number;
+  totalPages?: number;
 }
 
-const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
+const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay = 1 }) => {
   const { supabase, session } = useSession();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPdf, setIsPdf] = useState(false);
   const [pdfDocument, setPdfDocument] = useState<pdfjs.PDFDocumentProxy | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
 
   const renderPageToImage = useCallback(async (pdf: pdfjs.PDFDocumentProxy, pageNum: number) => {
     try {
@@ -52,7 +52,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
     setLoading(true);
     setImageUrl(null);
     setPdfDocument(null);
-    setCurrentPage(1);
     
     const { data: receipt, error: fetchError } = await supabase
       .from('receipts')
@@ -87,47 +86,30 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
       try {
         const pdf = await pdfjs.getDocument(finalUrl).promise;
         setPdfDocument(pdf);
-        // Initial render of page 1
-        const pdfAsImageUrl = await renderPageToImage(pdf, 1);
-        setImageUrl(pdfAsImageUrl);
       } catch (error) {
         console.error('Error loading PDF document:', error);
         setImageUrl(null);
+        setLoading(false);
       }
     } else {
-      // For images, use the signed URL directly
       setImageUrl(finalUrl);
+      setLoading(false);
     }
-    
-    setLoading(false);
-  }, [receiptId, session, supabase, renderPageToImage]);
+  }, [receiptId, session, supabase]);
 
   useEffect(() => {
     fetchReceiptAndUrl();
   }, [fetchReceiptAndUrl]);
 
-  // Effect to handle page change for PDFs
   useEffect(() => {
-    if (isPdf && pdfDocument && currentPage >= 1 && currentPage <= pdfDocument.numPages) {
+    if (isPdf && pdfDocument && pageToDisplay >= 1 && pageToDisplay <= pdfDocument.numPages) {
       setLoading(true);
-      renderPageToImage(pdfDocument, currentPage).then(url => {
+      renderPageToImage(pdfDocument, pageToDisplay).then(url => {
         setImageUrl(url);
         setLoading(false);
       });
     }
-  }, [currentPage, pdfDocument, isPdf, renderPageToImage]);
-
-  const handleNextPage = () => {
-    if (pdfDocument && currentPage < pdfDocument.numPages) {
-      setCurrentPage(prev => prev + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(prev => prev - 1);
-    }
-  };
+  }, [pageToDisplay, pdfDocument, isPdf, renderPageToImage]);
 
   if (loading) {
     return (
@@ -142,7 +124,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
       <div className="flex flex-col items-center justify-center h-full min-h-[300px] bg-muted/50 rounded-lg p-4 text-muted-foreground">
         <ImageOff className="h-10 w-10 mb-2" />
         <p>Receipt image not available.</p>
-        <p className="text-xs text-center mt-1">Ensure the receipt was uploaded correctly and the storage bucket is configured.</p>
       </div>
     );
   }
@@ -164,34 +145,11 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
               </Button>
             </div>
 
-            {isPdf && pdfDocument && (
-              <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2 bg-background/80 p-2 rounded-lg shadow-md border">
-                <Button variant="outline" size="icon" onClick={handlePrevPage} disabled={currentPage === 1 || loading} className="h-8 w-8">
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm font-medium text-foreground">
-                  Page {currentPage} of {pdfDocument.numPages}
-                </span>
-                <Button variant="outline" size="icon" onClick={handleNextPage} disabled={currentPage === pdfDocument.numPages || loading} className="h-8 w-8">
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-
             <TransformComponent
-              wrapperStyle={{
-                width: '100%',
-                height: '100%',
-              }}
-              contentStyle={{
-                width: '100%',
-              }}
+              wrapperStyle={{ width: '100%', height: '100%' }}
+              contentStyle={{ width: '100%' }}
             >
-              <img
-                src={imageUrl}
-                alt="Receipt"
-                className="w-full"
-              />
+              <img src={imageUrl} alt="Receipt" className="w-full" />
             </TransformComponent>
           </>
         )}
