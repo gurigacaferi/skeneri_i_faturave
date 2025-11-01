@@ -41,9 +41,12 @@ async function generateHotp(secret: string, counter: number): Promise<string> {
   const secretBuffer = base32ToBuffer(secret);
   
   // Convert counter to 8-byte buffer (big-endian)
-  const counterBuffer = new ArrayBuffer(8);
-  const view = new DataView(counterBuffer);
-  view.setUint32(4, counter, false); // Set the lower 4 bytes (big-endian)
+  const counterBuffer = new Uint8Array(8);
+  let tempCounter = counter;
+  for (let i = 7; i >= 0; i--) {
+    counterBuffer[i] = tempCounter & 0xff;
+    tempCounter = tempCounter >> 8;
+  }
 
   const key = await crypto.subtle.importKey(
     'raw',
