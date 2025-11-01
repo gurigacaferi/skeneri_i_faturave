@@ -97,7 +97,7 @@ serve(async (req) => {
       If any other information is missing, use a reasonable default or null.`;
 
     const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-5", // Changed to gpt-5 as requested
+      model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
         {
