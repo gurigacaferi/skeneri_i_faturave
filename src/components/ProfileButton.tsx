@@ -39,7 +39,8 @@ const ProfileButton: React.FC = () => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0">
+        {/* Changed variant from 'ghost' to 'outline' for better visibility */}
+        <Button variant="outline" className="relative h-10 w-10 rounded-full p-0">
           <Avatar className="h-10 w-10 bg-primary text-primary-foreground">
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
