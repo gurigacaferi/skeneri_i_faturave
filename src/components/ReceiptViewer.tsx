@@ -87,6 +87,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
       try {
         const pdf = await pdfjs.getDocument(finalUrl).promise;
         setPdfDocument(pdf);
+        // Initial render of page 1
         const pdfAsImageUrl = await renderPageToImage(pdf, 1);
         setImageUrl(pdfAsImageUrl);
       } catch (error) {
@@ -94,6 +95,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId }) => {
         setImageUrl(null);
       }
     } else {
+      // For images, use the signed URL directly
       setImageUrl(finalUrl);
     }
     
