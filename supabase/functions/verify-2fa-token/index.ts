@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { authenticator } from 'https://esm.sh/otplib@12.0.1';
+import { authenticator } from 'https://esm.sh/otplib@12.0.1?bundle';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -41,8 +41,6 @@ Deno.serve(async (req) => {
       .single();
 
     if (profileError || !profile || !profile.two_factor_secret) {
-      // If the secret is missing, but 2FA is required for login, this is a failure.
-      // If action is 'setup', this is also a failure.
       return new Response(JSON.stringify({ valid: false, message: '2FA secret not found for user.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -60,7 +58,6 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'setup') {
-      // Only enable 2FA if the user is setting it up
       const { error: enableError } = await supabaseAdmin
         .from('profiles')
         .update({ two_factor_enabled: true })

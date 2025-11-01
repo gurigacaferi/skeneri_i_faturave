@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { authenticator } from 'https://esm.sh/otplib@12.0.1';
+import { authenticator } from 'https://esm.sh/otplib@12.0.1?bundle';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
