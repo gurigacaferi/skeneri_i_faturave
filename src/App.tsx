@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import AdminPage from "./pages/Admin";
 import UpdatePassword from "./pages/UpdatePassword";
 import ReceiptReviewScreen from "./pages/ReceiptReviewScreen";
+import ProfileSettings from "./pages/ProfileSettings"; // Import new page
 import { SessionContextProvider } from "./components/SessionContextProvider";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/update-password" element={<UpdatePassword />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/profile" element={<ProfileSettings />} /> {/* New route */}
             <Route path="/review-receipt/:receiptId" element={<ReceiptReviewScreen />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

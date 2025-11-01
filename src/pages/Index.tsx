@@ -7,9 +7,10 @@ import ReceiptUpload from "@/components/ReceiptUpload";
 import ExpensesList from "@/components/ExpensesList";
 import { useDefaultBatch } from "@/hooks/useDefaultBatch";
 import { Loader2 } from "lucide-react";
+import ProfileButton from "@/components/ProfileButton"; // Import the new component
 
 const Index = () => {
-  const { session, loading: sessionLoading, supabase, profile } = useSession();
+  const { session, loading: sessionLoading, profile } = useSession();
   const navigate = useNavigate();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { selectedBatchId, loadingBatches, refreshBatches } = useDefaultBatch();
@@ -27,11 +28,6 @@ const Index = () => {
       refreshBatches();
     }
   }, [session, refreshBatches]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/login'); // Redirect to login after sign out
-  };
 
   const handleReceiptProcessed = () => {
     setRefreshTrigger(prev => prev + 1); // Increment to trigger a refresh in ExpensesList
@@ -68,14 +64,8 @@ const Index = () => {
             </h1>
           </div>
           <div className="flex items-center space-x-4">
-            {profile?.role === 'admin' && (
-              <Button onClick={() => navigate('/admin')} variant="secondary">
-                Admin Panel
-              </Button>
-            )}
-            <Button onClick={handleLogout} variant="outline">
-              Logout
-            </Button>
+            {/* Removed old Logout button */}
+            <ProfileButton />
           </div>
         </div>
       </header>
