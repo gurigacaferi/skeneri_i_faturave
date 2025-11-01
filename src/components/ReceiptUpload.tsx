@@ -118,25 +118,20 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
     setIsUploading(true);
     const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
-    const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
+    const allProcessedExpenses: ExtractedExpenseWithReceiptId[] = [];
     let hasError = false;
 
     for (const file of filesToProcess) {
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
       let receiptId: string | undefined;
-      let storagePath: string | undefined;
       
       try {
-        const base64Images = await fileToBase64Images(file);
-        updateFileState(file.id, { progress: 20 });
-
+        // Step 1: Upload file to storage and create receipt record
         const fileExtension = file.name.split('.').pop();
-        storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
-        const { error: storageError } = await supabase.storage
-          .from('receipts')
-          .upload(storagePath, file);
+        const storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
+        const { error: storageError } = await supabase.storage.from('receipts').upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
-        updateFileState(file.id, { progress: 40, storagePath });
+        updateFileState(file.id, { progress: 20, storagePath });
 
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
@@ -151,18 +146,36 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           .single();
         if (receiptInsertError) throw new Error(`DB insert failed: ${receiptInsertError.message}`);
         receiptId = receiptData.id;
-        updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
+        updateFileState(file.id, { progress: 30, receiptId, status: 'processing' });
 
-        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Images, receiptId },
-        });
-        updateFileState(file.id, { progress: 90 });
+        // Step 2: Convert file to images for processing
+        const base64Images = await fileToBase64Images(file);
+        const totalPages = base64Images.length;
+        updateFileState(file.id, { progress: 40 });
 
-        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
-        if (data.expenses) {
-          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        // Step 3: Process each page individually
+        for (let i = 0; i < totalPages; i++) {
+          const pageImage = base64Images[i];
+          const pageNumber = i + 1;
+          
+          const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
+            body: { base64Image: pageImage, receiptId, pageNumber },
+          });
+
+          if (edgeFunctionError) {
+            throw new Error(`Failed to process page ${pageNumber}: ${edgeFunctionError.message}`);
+          }
+
+          if (data.expenses) {
+            data.expenses.forEach((exp: any) => allProcessedExpenses.push({ receiptId: receiptId!, expense: exp }));
+          }
+          
+          // Update progress after each page
+          const progress = 40 + (50 * (pageNumber / totalPages));
+          updateFileState(file.id, { progress });
         }
         
+        // Step 4: Finalize
         await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
         updateFileState(file.id, { progress: 100, status: 'processed' });
 
@@ -179,9 +192,9 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     dismissToast(toastId);
     setIsUploading(false);
 
-    if (processedExpenses.length > 0) {
+    if (allProcessedExpenses.length > 0) {
       showSuccess(hasError ? 'Some receipts were processed successfully.' : 'All receipts processed!');
-      setAllExtractedExpensesForDialog(processedExpenses);
+      setAllExtractedExpensesForDialog(allProcessedExpenses);
       setIsSplitterDialogOpen(true);
     } else if (!hasError) {
       showError('AI could not extract any expenses from the uploaded files.');
