@@ -1,5 +1,78 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { totp } from 'https://esm.sh/otplib@12.0.1';
+
+// --- Inlined TOTP Utility (Corrected) ---
+const DIGITS = 6;
+const PERIOD = 30;
+
+function base32ToBuffer(base32: string): Uint8Array {
+  const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  base32 = base32.toUpperCase().replace(/[^A-Z2-7]/g, '');
+  
+  let bits = 0;
+  let value = 0;
+  const buffer: number[] = [];
+
+  for (let i = 0; i < base32.length; i++) {
+    const index = base32Chars.indexOf(base32[i]);
+    if (index === -1) continue;
+
+    value = (value << 5) | index;
+    bits += 5;
+
+    if (bits >= 8) {
+      buffer.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(buffer);
+}
+
+async function generateHotp(secret: string, counter: number): Promise<string> {
+  const secretBuffer = base32ToBuffer(secret);
+  
+  const counterBuffer = new Uint8Array(8);
+  const dataView = new DataView(counterBuffer.buffer);
+  dataView.setUint32(4, counter, false); // Use last 4 bytes for counter, big-endian
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    secretBuffer,
+    { name: 'HMAC', hash: 'SHA-1' }, // CORRECTED: Algorithm object
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'HMAC', // CORRECTED: Algorithm name
+    key,
+    counterBuffer
+  );
+
+  const hmac = new Uint8Array(signature);
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const bin = 
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  const otp = bin % Math.pow(10, DIGITS);
+  return otp.toString().padStart(DIGITS, '0');
+}
+
+async function validateTotp(secret: string, token: string, window: number = 1): Promise<boolean> {
+  const currentTime = Date.now();
+  for (let i = -window; i <= window; i++) {
+    const checkTime = currentTime + i * PERIOD * 1000;
+    const counter = Math.floor(checkTime / 1000 / PERIOD);
+    const generatedToken = await generateHotp(secret, counter);
+    if (generatedToken === token) {
+      return true;
+    }
+  }
+  return false;
+}
+// --- End of Inlined Utility ---
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,9 +121,7 @@ Deno.serve(async (req) => {
     }
 
     const secret = profile.two_factor_secret;
-    
-    // Use the otplib library for verification
-    const isValid = totp.verify({ token, secret });
+    const isValid = await validateTotp(secret, token);
 
     if (!isValid) {
       return new Response(JSON.stringify({ valid: false, message: 'Invalid TOTP token.' }), {
@@ -66,7 +137,6 @@ Deno.serve(async (req) => {
         .eq('id', userId);
 
       if (enableError) {
-        console.error('Error enabling 2FA:', enableError.message);
         throw new Error('Failed to enable 2FA in database.');
       }
     }
