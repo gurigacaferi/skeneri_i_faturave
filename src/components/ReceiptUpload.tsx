@@ -11,6 +11,7 @@ import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
 import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
+import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
