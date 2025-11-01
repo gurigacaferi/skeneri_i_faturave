@@ -72,7 +72,7 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
 
     // 1. Set up listener for real-time auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION' || event === 'PASSWORD_RECOVERY') {
         handleSession(currentSession);
         if (event === 'SIGNED_IN') showSuccess('Logged in successfully!');
       } else if (event === 'SIGNED_OUT') {

@@ -103,8 +103,6 @@ const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ set
     const toastId = showLoading('Sending recovery email...');
 
     try {
-      // IMPORTANT: The redirectTo URL must be the URL of this page, 
-      // which will handle the session update and display the new password form.
       const redirectToUrl = `${window.location.origin}/login`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
@@ -113,9 +111,8 @@ const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ set
 
       if (error) throw error;
 
-      // We show success even if the email doesn't exist to prevent user enumeration attacks.
       showSuccess('If an account exists, a password reset link has been sent to your email.');
-      setView('login'); // Go back to login view
+      setView('login');
     } catch (error: any) {
       showError(error.message || 'Failed to send recovery email.');
     } finally {
@@ -159,12 +156,13 @@ const Login = () => {
   const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Determine initial view based on URL params or session state
   const initialTab = searchParams.get('tab') || 'login';
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab as 'login' | 'signup');
   const [view, setView] = useState<View>(initialTab === 'signup' ? 'signup' : 'login');
+  
+  // This flag prevents navigation while in the password reset flow.
+  const [isRecoveryFlow, setIsRecoveryFlow] = useState(false);
 
-  // Update form defaults and active tab when URL params change
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
   });
@@ -178,7 +176,34 @@ const Login = () => {
     },
   });
 
+  // This effect runs once on mount to check for the password recovery hash.
   useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes('access_token') && hash.includes('type=recovery')) {
+      setIsRecoveryFlow(true);
+      setView('update_password');
+      // Clean the URL
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  // This effect handles general navigation based on session state.
+  useEffect(() => {
+    // If we are in the recovery flow, we stop here and let the user update their password.
+    if (isRecoveryFlow) {
+      return;
+    }
+
+    if (!loading && session) {
+      navigate('/');
+    }
+  }, [session, loading, navigate, isRecoveryFlow]);
+
+  // This effect handles URL param changes for the signup form.
+  useEffect(() => {
+    // Don't change view if we are in the middle of password recovery
+    if (isRecoveryFlow) return;
+
     const tab = searchParams.get('tab') || 'login';
     setActiveTab(tab as 'login' | 'signup');
     setView(tab === 'signup' ? 'signup' : 'login');
@@ -188,29 +213,7 @@ const Login = () => {
       password: '',
       invitation_code: searchParams.get('code') || '',
     });
-  }, [searchParams, signUpForm]);
-
-  useEffect(() => {
-    if (!loading && session) {
-      // Check if the user is logged in via a recovery token (session.user.email_confirmed_at is null)
-      // Supabase typically handles the session update automatically after the email link click.
-      // We check if the user is authenticated but the password needs to be updated.
-      // A simple way to detect this state is to check if the URL hash contains access_token/refresh_token
-      // which indicates a fresh redirect from an email link.
-      const hash = window.location.hash;
-      if (hash.includes('access_token') && hash.includes('refresh_token')) {
-        // Clear the hash to prevent re-triggering the session update logic
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        setView('update_password');
-        return;
-      }
-      
-      // If already logged in and not in a password update flow, navigate to home
-      if (view !== 'update_password') {
-        navigate('/');
-      }
-    }
-  }, [session, loading, navigate, view]);
+  }, [searchParams, signUpForm, isRecoveryFlow]);
 
   const handleLogin = async (values: z.infer<typeof loginSchema>) => {
     setIsSubmitting(true);
@@ -218,7 +221,6 @@ const Login = () => {
     try {
       const { error } = await supabase.auth.signInWithPassword(values);
       if (error) throw error;
-      // The onAuthStateChange listener in SessionContextProvider will handle success toast and navigation
     } catch (error: any) {
       showError(error.message || 'Failed to sign in.');
     } finally {
@@ -243,7 +245,6 @@ const Login = () => {
       if (data.error) throw new Error(data.error);
 
       showSuccess('Account created! Please sign in.');
-      // Automatically sign in the user after successful sign-up
       await handleLogin({ email: values.email, password: values.password });
     } catch (error: any) {
       showError(error.message || 'Sign up failed. Please check your invitation code and details.');
@@ -261,7 +262,6 @@ const Login = () => {
     );
   }
 
-  // If session exists and we are in the update_password view, show the update form
   if (session && view === 'update_password') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
@@ -276,12 +276,10 @@ const Login = () => {
     );
   }
 
-  // If session exists and we are not in update_password view, navigate home (handled by useEffect)
   if (session) {
     return null;
   }
 
-  // Standard login/signup/recovery views
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
       <div className="w-full max-w-md">
