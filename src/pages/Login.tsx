@@ -52,7 +52,7 @@ const PasswordUpdateForm: React.FC<{ navigate: (path: string) => void }> = ({ na
     const toastId = showLoading('Updating password...');
 
     try {
-      const { data, error } = await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({
         password: values.password,
       });
 
@@ -151,7 +151,7 @@ const PasswordRecoveryForm: React.FC<{ setView: (view: View) => void }> = ({ set
 // --- Main Component ---
 
 const Login = () => {
-  const { session, loading } = useSession();
+  const { session, loading, authEvent } = useSession();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -159,9 +159,6 @@ const Login = () => {
   const initialTab = searchParams.get('tab') || 'login';
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab as 'login' | 'signup');
   const [view, setView] = useState<View>(initialTab === 'signup' ? 'signup' : 'login');
-  
-  // This flag prevents navigation while in the password reset flow.
-  const [isRecoveryFlow, setIsRecoveryFlow] = useState(false);
 
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -176,33 +173,24 @@ const Login = () => {
     },
   });
 
-  // This effect runs once on mount to check for the password recovery hash.
+  // Effect to handle view changes based on the reliable authEvent from context
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.includes('access_token') && hash.includes('type=recovery')) {
-      setIsRecoveryFlow(true);
+    if (authEvent === 'PASSWORD_RECOVERY') {
       setView('update_password');
-      // Clean the URL
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
-  }, []);
+  }, [authEvent]);
 
-  // This effect handles general navigation based on session state.
+  // Effect to handle navigation for authenticated users
   useEffect(() => {
-    // If we are in the recovery flow, we stop here and let the user update their password.
-    if (isRecoveryFlow) {
-      return;
-    }
-
-    if (!loading && session) {
+    // Only navigate away if there's a session AND it's NOT a password recovery flow
+    if (!loading && session && authEvent !== 'PASSWORD_RECOVERY') {
       navigate('/');
     }
-  }, [session, loading, navigate, isRecoveryFlow]);
+  }, [session, loading, navigate, authEvent]);
 
-  // This effect handles URL param changes for the signup form.
+  // Effect to sync view with URL parameters (e.g., for sign-up links)
   useEffect(() => {
-    // Don't change view if we are in the middle of password recovery
-    if (isRecoveryFlow) return;
+    if (authEvent === 'PASSWORD_RECOVERY') return; // Don't let URL params override recovery flow
 
     const tab = searchParams.get('tab') || 'login';
     setActiveTab(tab as 'login' | 'signup');
@@ -213,7 +201,7 @@ const Login = () => {
       password: '',
       invitation_code: searchParams.get('code') || '',
     });
-  }, [searchParams, signUpForm, isRecoveryFlow]);
+  }, [searchParams, signUpForm, authEvent]);
 
   const handleLogin = async (values: z.infer<typeof loginSchema>) => {
     setIsSubmitting(true);
@@ -262,7 +250,7 @@ const Login = () => {
     );
   }
 
-  if (session && view === 'update_password') {
+  if (view === 'update_password') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-secondary/50">
         <div className="w-full max-w-md">
@@ -277,7 +265,7 @@ const Login = () => {
   }
 
   if (session) {
-    return null;
+    return null; // The navigation useEffect will handle the redirect
   }
 
   return (

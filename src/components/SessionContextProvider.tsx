@@ -5,16 +5,17 @@ import { showSuccess, showError } from '@/utils/toast';
 
 interface UserProfile {
   id: string;
-  csv_export_columns: string[] | null; // New field for export preferences
-  role: 'user' | 'admin'; // Added role field
+  csv_export_columns: string[] | null;
+  role: 'user' | 'admin';
 }
 
 interface SessionContextType {
   session: Session | null;
   supabase: SupabaseClient;
   loading: boolean;
-  profile: UserProfile | null; // Expose profile data
-  refreshProfile: () => Promise<void>; // Function to manually refresh profile
+  profile: UserProfile | null;
+  authEvent: string | null; // New state to track the auth event type
+  refreshProfile: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -23,24 +24,24 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authEvent, setAuthEvent] = useState<string | null>(null); // State for the event
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, csv_export_columns, role') // Fetch the new role column
+      .select('id, csv_export_columns, role')
       .eq('id', userId)
       .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
+    if (error && error.code !== 'PGRST116') {
       console.error('Error fetching profile:', error.message);
       setProfile(null);
     } else if (data) {
       setProfile(data as UserProfile);
     } else {
-      // If no profile exists, create a minimal one (assuming RLS allows this)
       const { data: newProfile, error: insertError } = await supabase
         .from('profiles')
-        .insert({ id: userId, csv_export_columns: null, role: 'user' }) // Default new users to 'user' role
+        .insert({ id: userId, csv_export_columns: null, role: 'user' })
         .select('id, csv_export_columns, role')
         .single();
       
@@ -59,7 +60,8 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
   };
 
   useEffect(() => {
-    const handleSession = async (currentSession: Session | null) => {
+    const handleSession = async (event: string, currentSession: Session | null) => {
+      setAuthEvent(event); // Store the event type
       if (currentSession) {
         setSession(currentSession);
         await fetchProfile(currentSession.user.id);
@@ -70,32 +72,22 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
       setLoading(false);
     };
 
-    // 1. Set up listener for real-time auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION' || event === 'PASSWORD_RECOVERY') {
-        handleSession(currentSession);
-        if (event === 'SIGNED_IN') showSuccess('Logged in successfully!');
-      } else if (event === 'SIGNED_OUT') {
-        handleSession(null);
-        showSuccess('Logged out successfully!');
-      } else if (event === 'AUTH_ERROR') {
-        showError('Authentication error. Please try again.');
-        handleSession(null);
-      }
+      handleSession(event, currentSession);
+      if (event === 'SIGNED_IN') showSuccess('Logged in successfully!');
+      if (event === 'SIGNED_OUT') showSuccess('Logged out successfully!');
+      if (event === 'AUTH_ERROR') showError('Authentication error. Please try again.');
     });
 
-    // 2. Check initial session status immediately
     const checkInitialSession = async () => {
       try {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
-        // Only set initial state if the listener hasn't already done it
         if (loading) {
-          handleSession(initialSession);
+          handleSession('INITIAL_SESSION', initialSession);
         }
       } catch (error) {
         console.error("Error checking initial session:", error);
         showError("Failed to connect to authentication service.");
-        // Crucially, set loading to false even on failure to unblock the UI
         setLoading(false); 
       }
     };
@@ -103,10 +95,10 @@ export const SessionContextProvider: React.FC<{ children: React.ReactNode }> = (
     checkInitialSession();
 
     return () => subscription.unsubscribe();
-  }, []); // Empty dependency array ensures this runs only once
+  }, []);
 
   return (
-    <SessionContext.Provider value={{ session, supabase, loading, profile, refreshProfile }}>
+    <SessionContext.Provider value={{ session, supabase, loading, profile, authEvent, refreshProfile }}>
       {children}
     </SessionContext.Provider>
   );
