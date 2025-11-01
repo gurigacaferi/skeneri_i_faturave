@@ -2,29 +2,14 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 import { authenticator } from 'https://esm.sh/otplib@12.0.1';
 
-// UPDATED corsHeaders for maximum compatibility
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Max-Age': '86400', // Cache preflight response for 24 hours
-}
-
 serve(async (req) => {
-  // Handle CORS preflight request
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { 
-      status: 200, // Explicitly set status to 200
-      headers: corsHeaders 
-    });
-  }
-
+  // The actual logic for POST requests
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Unauthorized: No Authorization header' }), {
         status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
@@ -39,7 +24,7 @@ serve(async (req) => {
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }), {
         status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
@@ -69,14 +54,20 @@ serve(async (req) => {
       serviceName: serviceName,
     }), {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Edge function error:', error.message);
     return new Response(JSON.stringify({ error: 'Internal Server Error', details: error.message }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
     });
+  }
+}, {
+  // Built-in CORS configuration
+  cors: {
+    origin: '*', // Or specify your frontend origin like 'https://test.fatur.al'
+    methods: ['POST'], // Only allow POST for this function
   }
 });
