@@ -125,11 +125,22 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
       let receiptId: string | undefined;
       let storagePath: string | undefined;
+      let base64Images: string[] = [];
       
       try {
-        const base64Images = await fileToBase64Images(file);
+        // 1. Convert file to base64 images (handles PDF rendering)
+        try {
+          base64Images = await fileToBase64Images(file);
+          if (base64Images.length === 0) {
+            throw new Error('File conversion resulted in zero images.');
+          }
+        } catch (conversionError: any) {
+          throw new Error(`File conversion failed: ${conversionError.message}`);
+        }
+        
         updateFileState(file.id, { progress: 20 });
 
+        // 2. Upload to storage
         const fileExtension = file.name.split('.').pop();
         storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
         const { error: storageError } = await supabase.storage
@@ -138,6 +149,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
         updateFileState(file.id, { progress: 40, storagePath });
 
+        // 3. Insert receipt record
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -153,16 +165,20 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
+        // 4. Invoke Edge Function for AI processing
         const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
           body: { base64Images, receiptId },
         });
         updateFileState(file.id, { progress: 90 });
 
         if (edgeFunctionError) throw new Error(edgeFunctionError.message);
+        if (data.error) throw new Error(data.error); // Handle errors returned in the response body
+
         if (data.expenses) {
           data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
         
+        // 5. Mark receipt as processed
         await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
         updateFileState(file.id, { progress: 100, status: 'processed' });
 
@@ -171,6 +187,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         const errorMessage = error.message || 'Unknown error during processing.';
         updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
         if (receiptId) {
+            // If we failed after inserting the receipt, mark it as failed in DB
             await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
         }
       }
@@ -194,7 +211,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     setIsSplitterDialogOpen(false);
     setAllExtractedExpensesForDialog(null);
     // Only keep files that are in an error state (failed or unsupported).
-    // All others (pending, uploading, processing, processed) are cleared.
     setFiles(prevFiles => prevFiles.filter(f => f.status === 'failed' || f.status === 'unsupported'));
     onReceiptProcessed();
   };
@@ -219,7 +235,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             </div>
           </div>
           
-          {visibleFiles.length > 0 && (
+          {files.length > 0 && (
             <div className="mt-6 space-y-4">
               <p className="text-sm font-medium text-foreground/80">Processing Queue:</p>
               
@@ -230,7 +246,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 </div>
               )}
 
-              {visibleFiles.map(file => {
+              {files.map(file => {
                 const isUnsupported = file.status === 'unsupported';
                 const isFailed = file.status === 'failed';
                 const isErrorState = isUnsupported || isFailed;
