@@ -39,12 +39,23 @@ interface ExtractedExpenseWithReceiptId {
 
 interface UploadedFile extends File {
   id: string;
-  status: 'pending' | 'uploading' | 'processing' | 'processed' | 'failed';
+  status: 'pending' | 'uploading' | 'processing' | 'processed' | 'failed' | 'unsupported';
   progress: number;
   receiptId?: string;
   errorMessage?: string;
   storagePath?: string; // Added storagePath to track where the file is saved
 }
+
+const ACCEPTED_MIME_TYPES = {
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/webp': ['.webp'],
+  'application/pdf': ['.pdf'],
+  'image/gif': ['.gif'],
+  'image/bmp': ['.bmp'],
+  'image/heic': ['.heic'],
+  'image/heif': ['.heif'],
+};
 
 const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -54,7 +65,8 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>([]);
 
-  const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed');
+  const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
+  const filesToProcess = files.filter(f => f.status === 'pending');
 
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
     setFiles(prevFiles =>
@@ -64,28 +76,27 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     );
   }, []);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { 
+  const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
+    const newAcceptedFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { 
       id: uuidv4(), 
       status: 'pending', 
       progress: 0,
       errorMessage: undefined,
     })) as UploadedFile[];
-    setFiles(prevFiles => [...prevFiles, ...newFiles]);
+
+    const newRejectedFiles: UploadedFile[] = fileRejections.map(({ file, errors }) => Object.assign(file, {
+      id: uuidv4(),
+      status: 'unsupported',
+      progress: 0,
+      errorMessage: errors[0]?.message || 'File type not supported.',
+    })) as UploadedFile[];
+
+    setFiles(prevFiles => [...prevFiles, ...newAcceptedFiles, ...newRejectedFiles]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'image/png': ['.png'],
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/webp': ['.webp'],
-      'application/pdf': ['.pdf'],
-      'image/gif': ['.gif'],
-      'image/bmp': ['.bmp'],
-      'image/heic': ['.heic'],
-      'image/heif': ['.heif'],
-    },
+    accept: ACCEPTED_MIME_TYPES,
     multiple: true,
   });
 
@@ -100,15 +111,15 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   };
 
   const handleFileUpload = async () => {
-    if (pendingFiles.length === 0) { showError('No files selected or pending processing.'); return; }
+    if (filesToProcess.length === 0) { showError('No files selected or pending processing.'); return; }
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
     setIsUploading(true);
-    const toastId = showLoading(`Starting processing for ${pendingFiles.length} receipt(s)...`);
+    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
     const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
     let hasError = false;
 
-    for (const file of pendingFiles) {
+    for (const file of filesToProcess) {
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
       let receiptId: string | undefined;
       let storagePath: string | undefined;
@@ -180,12 +191,13 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const handleExpensesSaved = () => {
     setIsSplitterDialogOpen(false);
     setAllExtractedExpensesForDialog(null);
+    // Keep only files that failed processing (not unsupported files, which are already marked)
     setFiles(prevFiles => prevFiles.filter(f => f.status === 'failed'));
     onReceiptProcessed();
   };
 
   const totalProgress = files.length > 0 
-    ? files.reduce((sum, file) => sum + file.progress, 0) / files.length 
+    ? files.reduce((sum, file) => file.status !== 'unsupported' ? sum + file.progress : sum, 0) / files.filter(f => f.status !== 'unsupported').length 
     : 0;
 
   return (
@@ -215,55 +227,74 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 </div>
               )}
 
-              {files.map(file => (
-                <div key={file.id} className="flex flex-col p-3 border rounded-md transition-colors" data-status={file.status}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3 min-w-0">
-                      {getFileIcon(file.type)}
-                      <span className="text-sm font-medium truncate">{file.name}</span>
+              {files.map(file => {
+                const isUnsupported = file.status === 'unsupported';
+                const isFailed = file.status === 'failed';
+                const isErrorState = isUnsupported || isFailed;
+
+                return (
+                  <div 
+                    key={file.id} 
+                    className={cn(
+                      "flex flex-col p-3 border rounded-md transition-colors",
+                      isUnsupported && "border-destructive/50 bg-destructive/10 border-l-4 border-l-destructive",
+                      isFailed && "border-destructive/50 bg-destructive/10 border-l-4 border-l-destructive",
+                    )}
+                    data-status={file.status}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 min-w-0">
+                        {isErrorState ? (
+                          <X className="h-5 w-5 text-destructive" />
+                        ) : (
+                          getFileIcon(file.type)
+                        )}
+                        <span className={cn("text-sm font-medium truncate", isErrorState && "text-destructive")}>{file.name}</span>
+                        <span className="text-xs text-muted-foreground">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                      </div>
+                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        {file.status === 'pending' && (
+                          <span className="text-xs text-muted-foreground">Ready</span>
+                        )}
+                        {file.status === 'uploading' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        )}
+                        {file.status === 'processing' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        )}
+                        {file.status === 'processed' && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {isErrorState && (
+                          <span className="text-xs text-destructive">Error</span>
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }} 
+                          className="h-6 w-6 text-foreground/60 hover:text-destructive"
+                          disabled={isUploading && !isErrorState}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2 flex-shrink-0">
-                      {file.status === 'pending' && (
-                        <span className="text-xs text-muted-foreground">Ready</span>
-                      )}
-                      {file.status === 'uploading' && (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      )}
-                      {file.status === 'processing' && (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      )}
-                      {file.status === 'processed' && (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      )}
-                      {file.status === 'failed' && (
-                        <AlertTriangle className="h-4 w-4 text-destructive" />
-                      )}
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }} 
-                        className="h-6 w-6 text-foreground/60 hover:text-destructive"
-                        disabled={isUploading}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    
+                    {(file.status === 'uploading' || file.status === 'processing') && (
+                      <Progress value={file.progress} className="h-1 mt-2" />
+                    )}
+                    
+                    {isErrorState && file.errorMessage && (
+                      <p className="text-xs text-destructive mt-1 truncate">{file.errorMessage}</p>
+                    )}
                   </div>
-                  
-                  {(file.status === 'uploading' || file.status === 'processing') && (
-                    <Progress value={file.progress} className="h-1 mt-2" />
-                  )}
-                  
-                  {file.status === 'failed' && file.errorMessage && (
-                    <p className="text-xs text-destructive mt-1 truncate">Error: {file.errorMessage}</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           
-          <Button onClick={handleFileUpload} className="w-full mt-6 h-12 text-lg font-semibold" disabled={pendingFiles.length === 0 || isUploading || !selectedBatchId}>
-            {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>) : (`Process ${pendingFiles.length} Receipt(s)`)}
+          <Button onClick={handleFileUpload} className="w-full mt-6 h-12 text-lg font-semibold" disabled={filesToProcess.length === 0 || isUploading || !selectedBatchId}>
+            {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>) : (`Process ${filesToProcess.length} Receipt(s)`)}
           </Button>
           {!selectedBatchId && (<p className="text-sm text-destructive mt-2 text-center">Please select or create an expense batch.</p>)}
         </CardContent>
