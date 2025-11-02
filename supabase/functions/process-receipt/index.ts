@@ -112,7 +112,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-5', // Changed model from gpt-4o to gpt-5
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessageContent },
