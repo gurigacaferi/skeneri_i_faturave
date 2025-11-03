@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { NJESIA_OPTIONS } from '@/lib/constants';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 
+// Define categories and VAT codes locally for the form logic
 const expenseCategories = {
   "660 Shpenzime te personelit": ["660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional"],
   "665 Shpenzimet e zyres": ["665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera"],
@@ -65,8 +66,8 @@ const ReceiptReviewScreen = () => {
   const { receiptId } = useParams<{ receiptId: string }>();
   const navigate = useNavigate();
   const { supabase, session } = useSession();
-  const { imageUrl, expenses, setReviewData, clearReviewData } = useReceiptReviewStore();
 
+  const { imageUrl, expenses, setReviewData, clearReviewData } = useReceiptReviewStore();
   const [editedExpenses, setEditedExpenses] = useState<ExpenseItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
@@ -93,7 +94,7 @@ const ReceiptReviewScreen = () => {
         const category = exp.category && allSubcategories.includes(exp.category) ? exp.category : DEFAULT_CATEGORY;
         return {
           ...exp,
-          category,
+          category: category,
           date: exp.date,
           tvsh_percentage: exp.tvsh_percentage || getPercentageFromVatCode(exp.vat_code || 'No VAT'),
           vat_code: exp.vat_code || 'No VAT',
@@ -101,7 +102,6 @@ const ReceiptReviewScreen = () => {
           njesia: exp.njesia || NJESIA_OPTIONS[0],
         };
       });
-
       setReviewData({ receiptId, imageUrl: receiptData.storage_path, expenses: mappedExpenses });
     } catch (error: any) {
       showError(error.message);
@@ -211,13 +211,14 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-background overflow-hidden">
-      {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm flex-shrink-0">
-        <div className="px-6 h-16 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-foreground">
-            Review Receipt: {receiptId?.substring(0, 8)}...
-          </h1>
+    <div className="h-screen w-full overflow-x-hidden bg-background flex flex-col">
+      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10 flex-shrink-0">
+        <div className="container mx-auto px-4 h-16 flex justify-between items-center">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">
+              Review Receipt: {receiptId?.substring(0, 8)}...
+            </h1>
+          </div>
           <div className="flex items-center space-x-2">
             <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
               Cancel
@@ -236,48 +237,216 @@ const ReceiptReviewScreen = () => {
         </div>
       </header>
 
-      {/* Main Layout */}
-      <main className="flex-1 min-h-0 overflow-hidden px-6 py-4">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full min-h-0 overflow-hidden">
+      <main className="flex-1 overflow-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full min-h-0 overflow-auto">
 
-          {/* Left column (Receipt) */}
-          <div className="lg:col-span-2 flex flex-col min-h-0 overflow-auto">
+          {/* Left column: Receipt Viewer */}
+          <div className="lg:col-span-2 flex flex-col h-full min-h-0 overflow-auto">
             <div className="bg-card border rounded-lg shadow-sm p-4 flex flex-col flex-1 min-h-0">
-              <h2 className="text-lg font-semibold mb-4">Receipt Image</h2>
-              <div className="flex-1 min-h-0 overflow-auto rounded-md">
+              <h2 className="text-lg font-semibold mb-4 flex-shrink-0">Receipt Image</h2>
+              <div className="flex-1 overflow-auto">
                 <ReceiptViewer receiptId={receiptId} />
               </div>
             </div>
           </div>
 
-          {/* Right column (Expenses) */}
-          <div className="lg:col-span-3 flex flex-col min-h-0 overflow-auto">
-            <div className="bg-card border rounded-lg shadow-sm p-6 flex flex-col flex-1 min-h-0 overflow-auto">
+          {/* Right column: Expense Items Form */}
+          <div className="lg:col-span-3 flex flex-col h-full min-h-0 overflow-auto">
+            <div className="bg-card border rounded-lg shadow-sm p-6 flex-1 overflow-auto">
               <h2 className="text-lg font-semibold mb-6">Expense Items</h2>
-              <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="flex-1 min-h-0 overflow-auto space-y-6">
+              <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
                 {editedExpenses.map((expense, index) => (
                   <div key={expense.id || index} className="border-b pb-6 last:border-b-0 last:pb-0">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-md font-medium">Expense #{index + 1}</h3>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeExpense(index)}
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => removeExpense(index)} 
                         disabled={isLoading}
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        title="Delete Expense"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
 
-                    {/* Keep your existing input fields here */}
-                    {/* (Unchanged form fields preserved from previous version) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <Label htmlFor={`name-${index}`}>Name</Label>
+                        <Input 
+                          id={`name-${index}`} 
+                          value={expense.name} 
+                          onChange={(e) => handleInputChange(index, 'name', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label htmlFor={`category-${index}`}>Category</Label>
+                        <Select 
+                          onValueChange={(value) => handleInputChange(index, 'category', value)} 
+                          value={expense.category} 
+                          disabled={isLoading}
+                        >
+                          <SelectTrigger id={`category-${index}`} className="truncate">
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                              <SelectGroup key={mainCategory}>
+                                <SelectLabel>{mainCategory}</SelectLabel>
+                                {subcategories.map((sub) => (
+                                  <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                                ))}
+                              </SelectGroup>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`amount-${index}`}>Amount</Label>
+                        <Input 
+                          id={`amount-${index}`} 
+                          type="number" 
+                          step="0.01" 
+                          value={expense.amount} 
+                          onChange={(e) => handleInputChange(index, 'amount', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`date-${index}`}>Date</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant={'outline'}
+                              className={cn(
+                                'w-full justify-start text-left font-normal',
+                                !expense.date && 'text-muted-foreground'
+                              )}
+                              disabled={isLoading}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar
+                              mode="single"
+                              selected={new Date(expense.date)}
+                              onSelect={(d) => handleInputChange(index, 'date', format(d!, 'yyyy-MM-dd'))}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`sasia-${index}`}>Sasia (Qty)</Label>
+                        <Input 
+                          id={`sasia-${index}`} 
+                          type="number" 
+                          step="1" 
+                          value={expense.sasia || 1} 
+                          onChange={(e) => handleInputChange(index, 'sasia', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`njesia-${index}`}>Njesia (Unit)</Label>
+                        <Select 
+                          onValueChange={(value) => handleInputChange(index, 'njesia', value)} 
+                          value={expense.njesia || NJESIA_OPTIONS[0]} 
+                          disabled={isLoading}
+                        >
+                          <SelectTrigger id={`njesia-${index}`}>
+                            <SelectValue placeholder="Select unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {NJESIA_OPTIONS.map((u) => (
+                              <SelectItem key={u} value={u}>{u}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
+                        <Select 
+                          onValueChange={(value) => handleInputChange(index, 'vat_code', value)} 
+                          value={expense.vat_code} 
+                          disabled={isLoading}
+                        >
+                          <SelectTrigger id={`vat_code-${index}`} className="truncate">
+                            <SelectValue placeholder="Select VAT code" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vatCodes.map((c) => (
+                              <SelectItem key={c} value={c}>{c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor={`merchant-${index}`}>Merchant</Label>
+                        <Input 
+                          id={`merchant-${index}`} 
+                          value={expense.merchant || ''} 
+                          onChange={(e) => handleInputChange(index, 'merchant', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`nui-${index}`}>NUI</Label>
+                        <Input 
+                          id={`nui-${index}`} 
+                          value={expense.nui || ''} 
+                          onChange={(e) => handleInputChange(index, 'nui', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor={`nr_fiskal-${index}`}>Nr. Fiskal</Label>
+                        <Input 
+                          id={`nr_fiskal-${index}`} 
+                          value={expense.nr_fiskal || ''} 
+                          onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label htmlFor={`numri_i_tvsh_se-${index}`}>Numri i TVSH-se</Label>
+                        <Input 
+                          id={`numri_i_tvsh_se-${index}`} 
+                          value={expense.numri_i_tvsh_se || ''} 
+                          onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label htmlFor={`description-${index}`}>Description</Label>
+                        <Textarea 
+                          id={`description-${index}`} 
+                          value={expense.description || ''} 
+                          onChange={(e) => handleInputChange(index, 'description', e.target.value)} 
+                          disabled={isLoading} 
+                        />
+                      </div>
+                    </div>
                   </div>
                 ))}
-
-                <Button
-                  onClick={addNewExpense}
-                  variant="secondary"
+                <Button 
+                  onClick={addNewExpense} 
+                  variant="secondary" 
                   className="w-full mt-4"
                   disabled={isLoading}
                 >
