@@ -2,11 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Diagnostic Style: If the background turns red after the restart, the issue is fixed. */
-body {
-  background-color: red !important;
-}
-
 @layer base {
   :root {
     /* Light Mode: Gray/Slate Theme */

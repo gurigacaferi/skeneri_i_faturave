@@ -130,7 +130,6 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
   }
 
   return (
-    // Ensure the container takes up the full space provided by the parent
     <div className="w-full h-full bg-muted/50 rounded-lg flex flex-col relative overflow-hidden">
       <TransformWrapper>
         {({ zoomIn, zoomOut, resetTransform }) => (
@@ -148,13 +147,10 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
             </div>
 
             <TransformComponent
-              // Set wrapper style to ensure it fills the parent container
               wrapperStyle={{ width: '100%', height: '100%' }}
-              // Set content style to ensure the image container fills the wrapper
-              contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}
+              contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
             >
-              {/* Crucial change: use max-w-full to ensure the image never exceeds the container width */}
-              <img src={imageUrl} alt="Receipt" className="max-w-full h-auto" />
+              <img src={imageUrl} alt="Receipt" className="max-w-full max-h-full object-contain" />
             </TransformComponent>
           </>
         )}
