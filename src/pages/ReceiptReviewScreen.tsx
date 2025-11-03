@@ -211,7 +211,7 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background flex flex-col">
+    <div className="h-screen w-full bg-background flex flex-col">
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10 flex-shrink-0">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
           <div>
@@ -239,13 +239,11 @@ const ReceiptReviewScreen = () => {
 
       <main className="container mx-auto px-4 py-6 flex-1 overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full">
-          <div className="lg:col-span-2 flex flex-col h-full">
-            <div className="bg-card border rounded-lg shadow-sm p-4 flex flex-col flex-1 min-h-0">
+          <div className="lg:col-span-2 flex flex-col h-full min-h-0">
+            <div className="bg-card border rounded-lg shadow-sm p-4 flex flex-col flex-1">
               <h2 className="text-lg font-semibold mb-4 flex-shrink-0">Receipt Image</h2>
-              <div className="flex-1 relative">
-                <div className="absolute inset-0 overflow-auto">
-                  <ReceiptViewer receiptId={receiptId} />
-                </div>
+              <div className="flex-1 overflow-auto min-h-0">
+                <ReceiptViewer receiptId={receiptId} />
               </div>
             </div>
           </div>
@@ -288,7 +286,7 @@ const ReceiptReviewScreen = () => {
                           value={expense.category} 
                           disabled={isLoading}
                         >
-                          <SelectTrigger id={`category-${index}`}>
+                          <SelectTrigger id={`category-${index}`} className="truncate">
                             <SelectValue placeholder="Select a category" />
                           </SelectTrigger>
                           <SelectContent>
@@ -380,7 +378,7 @@ const ReceiptReviewScreen = () => {
                           value={expense.vat_code} 
                           disabled={isLoading}
                         >
-                          <SelectTrigger id={`vat_code-${index}`}>
+                          <SelectTrigger id={`vat_code-${index}`} className="truncate">
                             <SelectValue placeholder="Select VAT code" />
                           </SelectTrigger>
                           <SelectContent>
