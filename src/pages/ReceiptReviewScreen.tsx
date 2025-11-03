@@ -240,9 +240,9 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background">
-      {/* Header (non-sticky for max-compat; make sticky later if you want) */}
-      <header className="border-b bg-card/80 backdrop-blur-sm">
+    <div className="flex flex-col h-screen w-full bg-background overflow-hidden">
+      {/* Header - Fixed at top */}
+      <header className="border-b bg-card/80 backdrop-blur-sm flex-shrink-0">
         <div className="px-6 h-16 flex justify-between items-center">
           <h1 className="text-xl font-bold text-foreground">Review Receipt: {receiptId?.substring(0, 8)}...</h1>
           <div className="flex items-center space-x-2">
@@ -263,25 +263,22 @@ const ReceiptReviewScreen = () => {
         </div>
       </header>
 
-      {/* Simple document scroll */}
-      <main className="px-6 py-6 overflow-x-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left column: Receipt */}
-          <div className="lg:col-span-2 min-w-0">
-            <div className="bg-card border rounded-lg shadow-sm p-4">
-              <h2 className="text-lg font-semibold mb-4">Receipt Image</h2>
-              {/* Safe wrapper to prevent cutoffs/horiz scroll */}
-              <div className="max-w-full overflow-auto">
-                <div className="inline-block max-w-full">
-                  {/* If ReceiptViewer renders an <img> or canvas, this wrapper stops overflow */}
-                  <ReceiptViewer receiptId={receiptId} />
-                </div>
-              </div>
+      {/* Main content area - Takes remaining height with flex layout */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Left column: Receipt - Fixed width, independently scrollable */}
+        <div className="w-full lg:w-2/5 border-r flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col p-6 overflow-hidden">
+            <h2 className="text-lg font-semibold mb-4 flex-shrink-0">Receipt Image</h2>
+            {/* Receipt viewer container with proper height */}
+            <div className="flex-1 bg-card border rounded-lg shadow-sm overflow-hidden">
+              <ReceiptViewer receiptId={receiptId} />
             </div>
           </div>
+        </div>
 
-          {/* Right column: Expense Items Form */}
-          <div className="lg:col-span-3 min-w-0">
+        {/* Right column: Expense Items Form - Takes remaining space, independently scrollable */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="p-6">
             <div className="bg-card border rounded-lg shadow-sm p-6">
               <h2 className="text-lg font-semibold mb-6">Expense Items</h2>
               <form
@@ -307,17 +304,17 @@ const ReceiptReviewScreen = () => {
                       </Button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="md:col-span-2 min-w-0">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
+                      <div className="md:col-span-2 min-w-0 overflow-hidden">
                         <Label htmlFor={`name-${index}`}>Name</Label>
                         <Input id={`name-${index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="md:col-span-2 min-w-0">
+                      <div className="md:col-span-2 min-w-0 overflow-hidden">
                         <Label htmlFor={`category-${index}`}>Category</Label>
                         <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
-                          <SelectTrigger id={`category-${index}`} className="truncate w-full max-w-full">
-                            <SelectValue placeholder="Select a category" />
+                          <SelectTrigger id={`category-${index}`} className="w-full">
+                            <SelectValue placeholder="Select a category" className="truncate" />
                           </SelectTrigger>
                           <SelectContent>
                             {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
@@ -334,12 +331,12 @@ const ReceiptReviewScreen = () => {
                         </Select>
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`amount-${index}`}>Amount</Label>
                         <Input id={`amount-${index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`date-${index}`}>Date</Label>
                         <Popover>
                           <PopoverTrigger asChild>
@@ -363,12 +360,12 @@ const ReceiptReviewScreen = () => {
                         </Popover>
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`sasia-${index}`}>Sasia (Qty)</Label>
                         <Input id={`sasia-${index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`njesia-${index}`}>Njesia (Unit)</Label>
                         <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
                           <SelectTrigger id={`njesia-${index}`} className="w-full">
@@ -384,11 +381,11 @@ const ReceiptReviewScreen = () => {
                         </Select>
                       </div>
 
-                      <div className="md:col-span-2 min-w-0">
+                      <div className="md:col-span-2 min-w-0 overflow-hidden">
                         <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
                         <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
-                          <SelectTrigger id={`vat_code-${index}`} className="truncate w-full max-w-full">
-                            <SelectValue placeholder="Select VAT code" />
+                          <SelectTrigger id={`vat_code-${index}`} className="w-full">
+                            <SelectValue placeholder="Select VAT code" className="truncate" />
                           </SelectTrigger>
                           <SelectContent>
                             {vatCodes.map((c) => (
@@ -400,29 +397,29 @@ const ReceiptReviewScreen = () => {
                         </Select>
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`merchant-${index}`}>Merchant</Label>
                         <Input id={`merchant-${index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`nui-${index}`}>NUI</Label>
                         <Input id={`nui-${index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 overflow-hidden">
                         <Label htmlFor={`nr_fiskal-${index}`}>Nr. Fiskal</Label>
                         <Input id={`nr_fiskal-${index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="md:col-span-2 min-w-0">
+                      <div className="md:col-span-2 min-w-0 overflow-hidden">
                         <Label htmlFor={`numri_i_tvsh_se-${index}`}>Numri i TVSH-se</Label>
                         <Input id={`numri_i_tvsh_se-${index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value)} disabled={isLoading} className="w-full" />
                       </div>
 
-                      <div className="md:col-span-2 min-w-0">
+                      <div className="md:col-span-2 min-w-0 overflow-hidden">
                         <Label htmlFor={`description-${index}`}>Description</Label>
-                        <Textarea id={`description-${index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value)} disabled={isLoading} className="w-full" />
+                        <Textarea id={`description-${index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value)} disabled={isLoading} className="w-full resize-none" />
                       </div>
                     </div>
                   </div>

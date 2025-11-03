@@ -130,8 +130,13 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
   }
 
   return (
-    <div className="w-full h-full bg-muted/50 rounded-lg flex flex-col relative overflow-hidden">
-      <TransformWrapper>
+    <div className="w-full h-full bg-muted/50 rounded-lg flex flex-col relative">
+      <TransformWrapper
+        initialScale={1}
+        minScale={0.5}
+        maxScale={4}
+        centerOnInit={true}
+      >
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
             <div className="absolute top-2 left-2 z-10 flex gap-2">
@@ -147,10 +152,10 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
             </div>
 
             <TransformComponent
-              wrapperStyle={{ width: '100%', height: '100%' }}
+              wrapperStyle={{ width: '100%', height: '100%', overflow: 'hidden' }}
               contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
             >
-              <img src={imageUrl} alt="Receipt" className="max-w-full max-h-full object-contain" />
+              <img src={imageUrl} alt="Receipt" className="max-w-full max-h-full object-contain" style={{ display: 'block' }} />
             </TransformComponent>
           </>
         )}
