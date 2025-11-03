@@ -1,12 +1,12 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
-// Inlining CORS headers to create a self-contained function and resolve bundling errors.
+// Inlined corsHeaders to fix the 'Module not found' deployment error
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+}
 
 const SYSTEM_PROMPT = `
 You are an expert accountant AI. Your task is to meticulously extract structured expense data from a multi-page receipt document provided as a series of images.
@@ -20,7 +20,7 @@ You are an expert accountant AI. Your task is to meticulously extract structured
 **DATA EXTRACTION FIELDS (in Albanian):**
 You must extract the following fields for EACH line item:
 - name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
-- category: The expense category. Choose from this list: [ "Ushqim & Pije", "Transport", "Akomodim", "Pajisje Elektronike", "Zyre & Shpenizime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If unsure, use "Te Tjera".
+- category: The expense category. Choose from this list: [ "Ushqim & Pije", "Transport", "Akomodim", "Pajisje Elektronike", "Zyre & Shpenzime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If unsure, use "Te Tjera".
 - amount: The price of the individual line item, as a number, correctly handling decimals.
 - date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
 - merchant: The name of the merchant or store. This will likely be the same for all items.
@@ -134,7 +134,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o', // Changed model to gpt-4o for best vision capabilities
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessageContent },
