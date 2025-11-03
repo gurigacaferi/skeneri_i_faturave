@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, a useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useReceiptReviewStore } from '@/store/receiptReviewStore';
 import { useSession } from '@/components/SessionContextProvider';
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Trash2, PlusCircle, Loader2 } from 'lucide-react';
 import ReceiptViewer from '@/components/ReceiptViewer';
 import { format } from 'date-fns';
@@ -18,7 +17,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { NJESIA_OPTIONS } from '@/lib/constants';
-import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast'; // Import toast utilities
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 
 // Define categories and VAT codes locally for the form logic
 const expenseCategories = {
@@ -47,7 +46,7 @@ const getPercentageFromVatCode = (vatCode: string): number => {
 };
 
 interface ExpenseItem {
-  id?: string; // Only present if fetched from DB
+  id?: string;
   name: string;
   category: string;
   amount: number;
@@ -77,13 +76,11 @@ const ReceiptReviewScreen = () => {
     if (!receiptId || !supabase || !session) return;
     setIsFetching(true);
     try {
-      // Fetch receipt data (including storage_path which ReceiptViewer needs)
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipts')
         .select('storage_path')
         .eq('id', receiptId)
         .single();
-
       if (receiptError) throw new Error(`Receipt not found: ${receiptError.message}`);
       if (!receiptData) throw new Error('Receipt data is null.');
 
@@ -91,24 +88,20 @@ const ReceiptReviewScreen = () => {
         .from('expenses')
         .select('*')
         .eq('receipt_id', receiptId);
-
       if (expensesError) throw new Error(`Failed to fetch expenses: ${expensesError.message}`);
 
-      // Map fetched data to ExpenseItem, ensuring date is string and tvsh_percentage is calculated
       const mappedExpenses: ExpenseItem[] = (expensesData || []).map(exp => {
         const category = exp.category && allSubcategories.includes(exp.category) ? exp.category : DEFAULT_CATEGORY;
-        
         return {
           ...exp,
-          category: category, // Use validated category
-          date: exp.date, // date is already a string in YYYY-MM-DD format from DB
+          category: category,
+          date: exp.date,
           tvsh_percentage: exp.tvsh_percentage || getPercentageFromVatCode(exp.vat_code || 'No VAT'),
           vat_code: exp.vat_code || 'No VAT',
           sasia: exp.sasia || 1,
           njesia: exp.njesia || NJESIA_OPTIONS[0],
         };
       });
-
       setReviewData({ receiptId, imageUrl: receiptData.storage_path, expenses: mappedExpenses });
     } catch (error: any) {
       showError(error.message);
@@ -119,13 +112,11 @@ const ReceiptReviewScreen = () => {
   }, [receiptId, supabase, session, navigate, setReviewData]);
 
   useEffect(() => {
-    // Check if we need to fetch data (if store is empty or ID mismatch)
     if (!imageUrl || useReceiptReviewStore.getState().receiptId !== receiptId) {
       fetchDataForEdit();
     } else {
       setIsFetching(false);
     }
-
     return () => {
       clearReviewData();
     };
@@ -138,7 +129,6 @@ const ReceiptReviewScreen = () => {
   const handleInputChange = (index: number, field: keyof ExpenseItem, value: any) => {
     const updatedExpenses = [...editedExpenses];
     const expense = updatedExpenses[index];
-
     if (field === 'vat_code') {
       expense.vat_code = value;
       expense.tvsh_percentage = getPercentageFromVatCode(value);
@@ -154,7 +144,7 @@ const ReceiptReviewScreen = () => {
   const addNewExpense = () => {
     const newExpense: ExpenseItem = {
       name: 'New Item',
-      category: DEFAULT_CATEGORY, // Use valid default category
+      category: DEFAULT_CATEGORY,
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       merchant: editedExpenses[0]?.merchant || null,
@@ -171,8 +161,7 @@ const ReceiptReviewScreen = () => {
   };
 
   const removeExpense = (index: number) => {
-    const updatedExpenses = editedExpenses.filter((_, i) => i !== index);
-    setEditedExpenses(updatedExpenses);
+    setEditedExpenses(editedExpenses.filter((_, i) => i !== index));
   };
 
   const validateExpenses = (): boolean => {
@@ -194,50 +183,16 @@ const ReceiptReviewScreen = () => {
     }
     setIsLoading(true);
     const toastId = showLoading('Saving changes...');
-
     try {
-      // 1. Delete existing expenses linked to this receipt
-      await supabase
-        .from('expenses')
-        .delete()
-        .eq('receipt_id', receiptId);
-      
-      // 2. Insert the updated list of expenses
-      const expensesToInsert = editedExpenses.map(exp => ({
-        name: exp.name,
-        category: exp.category,
-        amount: exp.amount,
-        date: exp.date,
-        merchant: exp.merchant,
-        vat_code: exp.vat_code,
-        tvsh_percentage: exp.tvsh_percentage,
-        nui: exp.nui,
-        nr_fiskal: exp.nr_fiskal,
-        numri_i_tvsh_se: exp.numri_i_tvsh_se,
-        description: exp.description,
-        sasia: exp.sasia,
-        njesia: exp.njesia,
-        receipt_id: receiptId,
-        user_id: session.user.id,
-      }));
-
-      const { error: insertError } = await supabase
-        .from('expenses')
-        .insert(expensesToInsert);
-
+      await supabase.from('expenses').delete().eq('receipt_id', receiptId);
+      const expensesToInsert = editedExpenses.map(exp => ({ ...exp, id: undefined, receipt_id: receiptId, user_id: session.user.id }));
+      const { error: insertError } = await supabase.from('expenses').insert(expensesToInsert);
       if (insertError) throw insertError;
-
-      // 3. Update receipt status to processed (if it wasn't already)
-      await supabase
-        .from('receipts')
-        .update({ status: 'processed' })
-        .eq('id', receiptId);
-
+      await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
       showSuccess("Expenses saved successfully!");
       navigate('/');
     } catch (error: any) {
       dismissToast(toastId);
-      console.error("Error saving expenses:", error);
       showError("Failed to save expenses: " + error.message);
     } finally {
       setIsLoading(false);
@@ -256,148 +211,132 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    // Outer wrapper: Standard page container, now allowing full page scroll
     <div className="w-full p-4 md:p-8">
-      {/* Main content container: Grows naturally */}
       <div className="w-full mx-auto max-w-7xl flex flex-col bg-card rounded-lg shadow-2xl border">
-        
-        {/* Header */}
         <div className="p-6 pb-4 border-b flex-shrink-0">
           <h1 className="text-2xl font-bold">Review Receipt: {receiptId?.substring(0, 8)}...</h1>
           <p className="text-sm text-muted-foreground">Verify and edit the extracted expense items.</p>
         </div>
 
-        {/* Main Grid Area: Content grows naturally */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6">
-          
-          {/* Left Column: Receipt Viewer (Fixed height, scrollable) */}
-          {/* FIX 1: Changed h-[80vh] to max-h-[80vh] to prevent cutoff while maintaining scrollability */}
-          <aside className="md:col-span-2 max-h-[80vh] overflow-y-auto">
-            <ReceiptViewer receiptId={receiptId} />
+        <div className="flex flex-col md:flex-row gap-6 p-6">
+          <aside className="w-full md:w-2/5 md:sticky md:top-24 h-[calc(100vh-8rem)]">
+            <div className="h-full overflow-y-auto border rounded-lg">
+              <ReceiptViewer receiptId={receiptId} />
+            </div>
           </aside>
 
-          {/* Right Column: Expense Forms (Content will push the page height) */}
-          {/* FIX 2 & 4: Removed overflow-y-auto from form to allow full page scroll */}
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="md:col-span-3">
-            <div className="grid gap-4">
-              {editedExpenses.map((expense, index) => (
-                // FIX 3: Changed inner grid from md:grid-cols-3 to md:grid-cols-2 for better horizontal spacing
-                <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 items-start border-b pb-4 mb-4 last:border-b-0 last:pb-0">
-                  <div className="col-span-full text-sm font-semibold text-gray-700 dark:text-gray-300 flex justify-between items-center">
-                    Expense #{index + 1}
-                    <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {/* Row 1: Name, Category (Full width) */}
-                  <div className="col-span-full">
-                    <Label htmlFor={`name-${expense.id || index}`}>Name</Label>
-                    <Input id={`name-${expense.id || index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
-                  </div>
-                  <div className="col-span-full">
-                    <Label htmlFor={`category-${expense.id || index}`}>Category</Label>
-                    <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
-                      <SelectTrigger id={`category-${expense.id || index}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                          <SelectGroup key={mainCategory}>
-                            <SelectLabel>{mainCategory}</SelectLabel>
-                            {subcategories.map((subCategory) => (<SelectItem key={subCategory} value={subCategory}>{subCategory}</SelectItem>))}
-                          </SelectGroup>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+          <main className="w-full md:w-3/5">
+            <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+              <div className="grid gap-6">
+                {editedExpenses.map((expense, index) => (
+                  <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 gap-4 border p-4 rounded-lg shadow-sm">
+                    <div className="col-span-full flex justify-between items-center">
+                      <h3 className="text-lg font-semibold">Expense #{index + 1}</h3>
+                      <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
 
-                  {/* Row 2: Amount, Date */}
-                  <div>
-                    <Label htmlFor={`amount-${expense.id || index}`}>Amount</Label>
-                    <Input id={`amount-${expense.id || index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', parseFloat(e.target.value) || 0)} disabled={isLoading} />
-                  </div>
-                  <div>
-                    <Label htmlFor={`date-${expense.id || index}`}>Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !expense.date && 'text-muted-foreground')} disabled={isLoading}>
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={new Date(expense.date)} onSelect={(date) => handleInputChange(index, 'date', format(date!, 'yyyy-MM-dd'))} initialFocus />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  
-                  {/* Row 3: VAT Code, Sasia */}
-                  <div>
-                    <Label htmlFor={`vat_code-${expense.id || index}`}>VAT Code</Label>
-                    <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
-                      <SelectTrigger id={`vat_code-${expense.id || index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
-                      <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor={`sasia-${expense.id || index}`}>Sasia (Qty)</Label>
-                    <Input id={`sasia-${expense.id || index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', parseFloat(e.target.value) || 0)} disabled={isLoading} />
-                  </div>
+                    <div className="col-span-full">
+                      <Label htmlFor={`name-${index}`}>Name</Label>
+                      <Input id={`name-${index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
+                    </div>
 
-                  {/* Row 4: Njesia, Merchant */}
-                  <div>
-                    <Label htmlFor={`njesia-${expense.id || index}`}>Njesia (Unit)</Label>
-                    <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
-                      <SelectTrigger id={`njesia-${expense.id || index}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
-                      <SelectContent>
-                        {NJESIA_OPTIONS.map((unit) => (<SelectItem key={unit} value={unit}>{unit}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor={`merchant-${expense.id || index}`}>Merchant</Label>
-                    <Input id={`merchant-${expense.id || index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value || null)} disabled={isLoading} />
-                  </div>
+                    <div className="col-span-full">
+                      <Label htmlFor={`category-${index}`}>Category</Label>
+                      <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
+                        <SelectTrigger id={`category-${index}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                            <SelectGroup key={mainCategory}>
+                              <SelectLabel>{mainCategory}</SelectLabel>
+                              {subcategories.map((sub) => (<SelectItem key={sub} value={sub}>{sub}</SelectItem>))}
+                            </SelectGroup>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                  {/* Row 5: NUI, Nr. Fiskal */}
-                  <div>
-                    <Label htmlFor={`nui-${expense.id || index}`}>NUI</Label>
-                    <Input id={`nui-${expense.id || index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value || null)} disabled={isLoading} />
+                    <div>
+                      <Label htmlFor={`amount-${index}`}>Amount</Label>
+                      <Input id={`amount-${index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', e.target.value)} disabled={isLoading} />
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`date-${index}`}>Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !expense.date && 'text-muted-foreground')} disabled={isLoading}>
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar mode="single" selected={new Date(expense.date)} onSelect={(d) => handleInputChange(index, 'date', format(d!, 'yyyy-MM-dd'))} initialFocus />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`sasia-${index}`}>Sasia (Qty)</Label>
+                      <Input id={`sasia-${index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', e.target.value)} disabled={isLoading} />
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`njesia-${index}`}>Njesia (Unit)</Label>
+                      <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
+                        <SelectTrigger id={`njesia-${index}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
+                        <SelectContent>{NJESIA_OPTIONS.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="col-span-full">
+                      <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
+                      <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
+                        <SelectTrigger id={`vat_code-${index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
+                        <SelectContent>{vatCodes.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor={`merchant-${index}`}>Merchant</Label>
+                      <Input id={`merchant-${index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value)} disabled={isLoading} />
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`nui-${index}`}>NUI</Label>
+                      <Input id={`nui-${index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value)} disabled={isLoading} />
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`nr_fiskal-${index}`}>Nr. Fiskal</Label>
+                      <Input id={`nr_fiskal-${index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value)} disabled={isLoading} />
+                    </div>
+
+                    <div>
+                      <Label htmlFor={`numri_i_tvsh_se-${index}`}>Numri i TVSH-se</Label>
+                      <Input id={`numri_i_tvsh_se-${index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value)} disabled={isLoading} />
+                    </div>
+
+                    <div className="col-span-full">
+                      <Label htmlFor={`description-${index}`}>Description</Label>
+                      <Textarea id={`description-${index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value)} disabled={isLoading} />
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor={`nr_fiskal-${expense.id || index}`}>Nr. Fiskal</Label>
-                    <Input id={`nr_fiskal-${expense.id || index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                  
-                  {/* Row 6: Numri i TVSH-se, Description (Full width) */}
-                  <div>
-                    <Label htmlFor={`numri_i_tvsh_se-${expense.id || index}`}>Numri i TVSH-se</Label>
-                    <Input id={`numri_i_tvsh_se-${expense.id || index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                  <div className="col-span-full">
-                    <Label htmlFor={`description-${expense.id || index}`}>Description</Label>
-                    <Textarea id={`description-${expense.id || index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value || null)} disabled={isLoading} />
-                  </div>
-                </div>
-              ))}
-              <Button onClick={addNewExpense} variant="secondary" className="mt-4" disabled={isLoading}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
-              </Button>
-            </div>
-          </form>
+                ))}
+                <Button onClick={addNewExpense} variant="secondary" className="mt-4" disabled={isLoading}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
+                </Button>
+              </div>
+            </form>
+          </main>
         </div>
 
-        {/* Footer with action buttons */}
         <div className="p-6 border-t bg-background flex-shrink-0">
           <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>Cancel</Button>
             <Button type="submit" onClick={handleSave} disabled={isLoading}>
-              {isLoading ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>
-              ) : (
-                'Save All Changes'
-              )}
+              {isLoading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</>) : 'Save All Changes'}
             </Button>
           </div>
         </div>
