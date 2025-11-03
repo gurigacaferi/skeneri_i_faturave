@@ -211,9 +211,9 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-background">
+    <div className="min-h-screen w-full bg-background flex flex-col">
       {/* Fixed Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10 flex-shrink-0">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-foreground">
@@ -239,13 +239,15 @@ const ReceiptReviewScreen = () => {
       </header>
 
       {/* Main Content - Scrollable */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 flex-grow">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Left Column: Receipt Viewer */}
           <div className="lg:col-span-2">
+            {/* Sticky container for the viewer */}
             <div className="bg-card border rounded-lg shadow-sm p-4 sticky top-24">
               <h2 className="text-lg font-semibold mb-4">Receipt Image</h2>
-              <div className="h-[calc(100vh-200px)] overflow-y-auto">
+              {/* Dynamic height calculation to fill remaining viewport space */}
+              <div className="h-[calc(100vh-15rem)] overflow-y-auto">
                 <ReceiptViewer receiptId={receiptId} />
               </div>
             </div>

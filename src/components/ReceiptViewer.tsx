@@ -26,6 +26,7 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
   const renderPageToImage = useCallback(async (pdf: pdfjs.PDFDocumentProxy, pageNum: number) => {
     try {
       const page = await pdf.getPage(pageNum);
+      // Use a fixed scale for rendering to ensure high quality, but let CSS handle display size
       const viewport = page.getViewport({ scale: 2.0 });
       
       const canvas = document.createElement('canvas');
@@ -129,7 +130,8 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
   }
 
   return (
-    <div className="w-full h-full bg-muted/50 rounded-lg flex flex-col relative">
+    // Ensure the container takes up the full space provided by the parent
+    <div className="w-full h-full bg-muted/50 rounded-lg flex flex-col relative overflow-hidden">
       <TransformWrapper>
         {({ zoomIn, zoomOut, resetTransform }) => (
           <>
@@ -146,10 +148,13 @@ const ReceiptViewer: React.FC<ReceiptViewerProps> = ({ receiptId, pageToDisplay 
             </div>
 
             <TransformComponent
+              // Set wrapper style to ensure it fills the parent container
               wrapperStyle={{ width: '100%', height: '100%' }}
-              contentStyle={{ width: '100%' }}
+              // Set content style to ensure the image container fills the wrapper
+              contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}
             >
-              <img src={imageUrl} alt="Receipt" className="w-full" />
+              {/* Crucial change: use max-w-full to ensure the image never exceeds the container width */}
+              <img src={imageUrl} alt="Receipt" className="max-w-full h-auto" />
             </TransformComponent>
           </>
         )}
