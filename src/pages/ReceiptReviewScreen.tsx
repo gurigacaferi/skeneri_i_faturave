@@ -211,7 +211,7 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    <div className="h-screen w-full bg-background flex flex-col">
+    <div className="h-screen w-full overflow-x-hidden bg-background flex flex-col">
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10 flex-shrink-0">
         <div className="container mx-auto px-4 h-16 flex justify-between items-center">
           <div>
@@ -237,19 +237,22 @@ const ReceiptReviewScreen = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 flex-1 overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full">
-          <div className="lg:col-span-2 flex flex-col h-full min-h-0">
-            <div className="bg-card border rounded-lg shadow-sm p-4 flex flex-col flex-1">
+      <main className="flex-1 overflow-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full min-h-0 overflow-auto">
+
+          {/* Left column: Receipt Viewer */}
+          <div className="lg:col-span-2 flex flex-col h-full min-h-0 overflow-auto">
+            <div className="bg-card border rounded-lg shadow-sm p-4 flex flex-col flex-1 min-h-0">
               <h2 className="text-lg font-semibold mb-4 flex-shrink-0">Receipt Image</h2>
-              <div className="flex-1 overflow-auto min-h-0">
+              <div className="flex-1 overflow-auto">
                 <ReceiptViewer receiptId={receiptId} />
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-3 overflow-y-auto">
-            <div className="bg-card border rounded-lg shadow-sm p-6">
+          {/* Right column: Expense Items Form */}
+          <div className="lg:col-span-3 flex flex-col h-full min-h-0 overflow-auto">
+            <div className="bg-card border rounded-lg shadow-sm p-6 flex-1 overflow-auto">
               <h2 className="text-lg font-semibold mb-6">Expense Items</h2>
               <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-6">
                 {editedExpenses.map((expense, index) => (
