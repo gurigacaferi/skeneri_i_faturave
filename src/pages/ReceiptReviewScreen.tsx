@@ -1,6 +1,6 @@
 'use client';
 
-import React, a useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useReceiptReviewStore } from '@/store/receiptReviewStore';
 import { useSession } from '@/components/SessionContextProvider';
