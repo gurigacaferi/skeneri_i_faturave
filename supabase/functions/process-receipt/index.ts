@@ -20,7 +20,7 @@ You are an expert accountant AI. Your task is to meticulously extract structured
 **DATA EXTRACTION FIELDS (in Albanian):**
 You must extract the following fields for EACH line item:
 - name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
-- category: The expense category. Choose from this list: [ "Ushqim & Pije", "Transport", "Akomodim", "Pajisje Elektronike", "Zyre & Shpenzime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If unsure, use "Te Tjera".
+- category: **MANDATORY.** The expense category. You MUST choose one category from this list for every item: [ "Ushqim & Pije", "Transport", "Akomodim", "Pajisje Elektronike", "Zyre & Shpenzime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If the item does not fit any category, you MUST use "Te Tjera".
 - amount: The price of the individual line item, as a number, correctly handling decimals.
 - date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
 - merchant: The name of the merchant or store. This will likely be the same for all items.
@@ -134,7 +134,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o', // Changed model to gpt-4o for best vision capabilities
+        model: 'gpt-4o', // Keeping gpt-4o as it is the best model for vision tasks.
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessageContent },
