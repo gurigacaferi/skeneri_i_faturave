@@ -7,6 +7,9 @@ export default defineConfig(() => ({
   server: {
     host: "::",
     port: 8080,
+    watch: {
+      usePolling: true,
+    },
   },
   plugins: [dyadComponentTagger(), react()],
   resolve: {
