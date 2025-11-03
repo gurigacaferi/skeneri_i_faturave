@@ -6,19 +6,17 @@ import { useToast } from '@/components/ui/use-toast';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { Receipt, Expense } from '@/lib/types';
-import { PDFDocument } from 'pdf-lib';
 import { Loader2, UploadCloud, File as FileIcon, X } from 'lucide-react';
 
 interface AddReceiptProps {
   onReceiptAdded: (receipt: Receipt, expenses: Expense[]) => void;
 }
 
-type ProcessingState = 'idle' | 'reading_file' | 'converting_pages' | 'processing_ai' | 'error';
+type ProcessingState = 'idle' | 'uploading' | 'processing_ai' | 'error';
 
 export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
   const [file, setFile] = useState<File | null>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>('idle');
-  const [processingMessage, setProcessingMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -27,11 +25,12 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       const selectedFile = acceptedFiles[0];
-      if (selectedFile.type !== 'application/pdf') {
+      // Allow both PDF and common image types for flexibility
+      if (selectedFile.type !== 'application/pdf' && !selectedFile.type.startsWith('image/')) {
         toast({
           variant: 'destructive',
           title: 'Invalid File Type',
-          description: 'Please upload a PDF file.',
+          description: 'Please upload a PDF or an image file.',
         });
         return;
       }
@@ -42,7 +41,10 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'application/pdf': ['.pdf'] },
+    accept: { 
+      'application/pdf': ['.pdf'],
+      'image/*': ['.jpeg', '.png', '.jpg'],
+    },
     multiple: false,
   });
 
@@ -52,17 +54,26 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
     setProcessingState('idle');
   };
 
-  const processPdf = async () => {
+  const processFile = async () => {
     if (!file || !user) return;
 
-    setProcessingState('reading_file');
-    setProcessingMessage('Reading PDF file...');
+    setProcessingState('uploading');
     setError(null);
 
     try {
-      const fileBuffer = await file.arrayBuffer();
-      
-      // Create a new receipt record in Supabase first
+      // 1. Read the file into a base64 string
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+
+      await new Promise<void>((resolve, reject) => {
+        reader.onload = () => resolve();
+        reader.onerror = (e) => reject(new Error(`Failed to read file: ${e}`));
+      });
+
+      const base64Image = reader.result as string;
+      const base64Images = [base64Image]; // Wrap in array for the function
+
+      // 2. Create a new receipt record in Supabase
       const { data: newReceipt, error: insertError } = await supabase
         .from('receipts')
         .insert({
@@ -77,58 +88,9 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
         throw new Error(`Failed to create receipt record: ${insertError.message}`);
       }
 
-      setProcessingState('converting_pages');
-      setProcessingMessage('Loading PDF document...');
-      
-      const pdfDoc = await PDFDocument.load(fileBuffer);
-      const numPages = pdfDoc.getPageCount();
-      const base64Images: string[] = [];
-
-      // Robustly render each page one by one
-      for (let i = 0; i < numPages; i++) {
-        setProcessingMessage(`Converting page ${i + 1} of ${numPages} to image...`);
-        
-        const page = pdfDoc.getPage(i);
-        const { width, height } = page.getSize();
-        const scale = 2; // Increase scale for better resolution
-
-        const embeddedPdf = await PDFDocument.create();
-        const [copiedPage] = await embeddedPdf.copyPages(pdfDoc, [i]);
-        embeddedPdf.addPage(copiedPage);
-        const pdfBytes = await embeddedPdf.save();
-
-        // Use a canvas to render the page
-        const canvas = document.createElement('canvas');
-        canvas.width = width * scale;
-        canvas.height = height * scale;
-        const context = canvas.getContext('2d');
-        
-        if (!context) {
-            throw new Error('Could not get canvas context');
-        }
-
-        // Dynamically import and use pdf.js for rendering
-        const pdfjsLib = await import('pdfjs-dist/build/pdf');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-        const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
-        const pdf = await loadingTask.promise;
-        const pdfPage = await pdf.getPage(1);
-        
-        const viewport = pdfPage.getViewport({ scale });
-        const renderContext = {
-            canvasContext: context,
-            viewport: viewport,
-        };
-
-        await pdfPage.render(renderContext).promise;
-        
-        base64Images.push(canvas.toDataURL('image/jpeg', 0.9));
-      }
-
       setProcessingState('processing_ai');
-      setProcessingMessage('AI is analyzing your receipt. This may take a moment...');
 
+      // 3. Invoke the Supabase function
       const { data: expensesData, error: functionError } = await supabase.functions.invoke('process-receipt', {
         body: { base64Images, receiptId: newReceipt.id },
       });
@@ -147,7 +109,7 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
         });
       }
 
-      // Update receipt status to 'processed'
+      // 4. Update receipt status to 'processed'
       const { error: updateError } = await supabase
         .from('receipts')
         .update({ status: 'processed' })
@@ -155,15 +117,14 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
 
       if (updateError) {
         console.error('Failed to update receipt status:', updateError.message);
-        // Non-critical error, proceed with adding to UI
       }
 
       onReceiptAdded(newReceipt, expenses);
       setFile(null);
 
     } catch (e: any) {
-      console.error('Error processing PDF:', e);
-      setError(`An error occurred: ${e.message}. Please try again.`);
+      console.error('Error processing file:', e);
+      setError(`An error occurred: ${e.message}. The dashboard should now be stable. Please try a smaller file.`);
       setProcessingState('error');
       toast({
         variant: 'destructive',
@@ -174,17 +135,27 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
       if (processingState !== 'error') {
         setProcessingState('idle');
       }
-      setProcessingMessage('');
     }
   };
 
   const isLoading = processingState !== 'idle' && processingState !== 'error';
+  
+  const getLoadingMessage = () => {
+    switch (processingState) {
+      case 'uploading':
+        return 'Reading file and preparing for upload...';
+      case 'processing_ai':
+        return 'AI is analyzing your receipt. This may take a moment...';
+      default:
+        return 'Processing...';
+    }
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Upload Receipt</CardTitle>
-        <CardDescription>Upload a PDF receipt to automatically extract expenses.</CardDescription>
+        <CardDescription>Upload a PDF or image receipt to automatically extract expenses.</CardDescription>
       </CardHeader>
       <CardContent>
         {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
@@ -199,9 +170,9 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <UploadCloud className="w-12 h-12" />
               {isDragActive ? (
-                <p>Drop the PDF here ...</p>
+                <p>Drop the file here ...</p>
               ) : (
-                <p>Drag 'n' drop a PDF here, or click to select file</p>
+                <p>Drag 'n' drop a file here, or click to select file (PDF or Image)</p>
               )}
             </div>
           </div>
@@ -222,10 +193,10 @@ export default function AddReceipt({ onReceiptAdded }: AddReceiptProps) {
             {isLoading ? (
               <div className="flex items-center gap-3 text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>{processingMessage}</span>
+                <span>{getLoadingMessage()}</span>
               </div>
             ) : (
-              <Button onClick={processPdf} className="w-full" disabled={isLoading}>
+              <Button onClick={processFile} className="w-full" disabled={isLoading}>
                 Process Receipt
               </Button>
             )}
