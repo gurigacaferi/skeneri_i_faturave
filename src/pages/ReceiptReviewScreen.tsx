@@ -30,10 +30,11 @@ const expenseCategories = {
   "675 Shpenzimet e komunikimit": ["675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks"],
   "683 Shpenzimet e sigurimit": ["683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses"],
   "686 Komunalite": ["686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes"],
-  "690 Shpenzime tjera operative": ["690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare"],
+  "690 Shpenzime tjera operative": ["690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare", "690-09 Te tjera"],
 };
 
 const allSubcategories = Object.values(expenseCategories).flat();
+const DEFAULT_CATEGORY = allSubcategories[0] || '690-09 Te tjera';
 
 const vatCodes = [
   "[31] Blerjet dhe importet pa TVSH", "[32] Blerjet dhe importet investive pa TVSH", "[33] Blerjet dhe importet me TVSH jo të zbritshme", "[34] Blerjet dhe importet investive me TVSH jo të zbritshme", "[35] Importet 18%", "[37] Importet 8%", "[39] Importet investive 18%", "[41] Importet investive 8%", "[43] Blerjet vendore 18%", "No VAT", "[45] Blerjet vendore 8%", "[47] Blerjet investive vendore 18%", "[49] Blerjet investive vendore 8%", "[65] E drejta e kreditimit të TVSH-së në lidhje me Ngarkesën e Kundërt 18%", "[28] Blerjet që i nënshtrohen ngarkesës së kundërt 18%",
@@ -94,14 +95,19 @@ const ReceiptReviewScreen = () => {
       if (expensesError) throw new Error(`Failed to fetch expenses: ${expensesError.message}`);
 
       // Map fetched data to ExpenseItem, ensuring date is string and tvsh_percentage is calculated
-      const mappedExpenses: ExpenseItem[] = (expensesData || []).map(exp => ({
-        ...exp,
-        date: exp.date, // date is already a string in YYYY-MM-DD format from DB
-        tvsh_percentage: exp.tvsh_percentage || getPercentageFromVatCode(exp.vat_code || 'No VAT'),
-        vat_code: exp.vat_code || 'No VAT',
-        sasia: exp.sasia || 1,
-        njesia: exp.njesia || NJESIA_OPTIONS[0],
-      }));
+      const mappedExpenses: ExpenseItem[] = (expensesData || []).map(exp => {
+        const category = exp.category && allSubcategories.includes(exp.category) ? exp.category : DEFAULT_CATEGORY;
+        
+        return {
+          ...exp,
+          category: category, // Use validated category
+          date: exp.date, // date is already a string in YYYY-MM-DD format from DB
+          tvsh_percentage: exp.tvsh_percentage || getPercentageFromVatCode(exp.vat_code || 'No VAT'),
+          vat_code: exp.vat_code || 'No VAT',
+          sasia: exp.sasia || 1,
+          njesia: exp.njesia || NJESIA_OPTIONS[0],
+        };
+      });
 
       setReviewData({ receiptId, imageUrl: receiptData.storage_path, expenses: mappedExpenses });
     } catch (error: any) {
@@ -148,7 +154,7 @@ const ReceiptReviewScreen = () => {
   const addNewExpense = () => {
     const newExpense: ExpenseItem = {
       name: 'New Item',
-      category: allSubcategories[0] || '690-09 Te tjera',
+      category: DEFAULT_CATEGORY, // Use valid default category
       amount: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       merchant: editedExpenses[0]?.merchant || null,

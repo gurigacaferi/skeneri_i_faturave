@@ -17,26 +17,24 @@ You are an expert accountant AI. Your task is to meticulously extract structured
 3.  **ACCURATE NUMBER PARSING:** You MUST correctly parse numbers. Pay close attention to decimal separators ('.' or ','). An amount like "12.20" or "12,20" must be extracted as the number \`12.2\`. An amount like "1,234.56" must be \`1234.56\`. Do not mistake decimal points for thousands separators.
 4.  **ACCURATE PAGE NUMBERING:** For each extracted expense, you must correctly set the \`pageNumber\`. The images are provided in order: the first image is page 1, the second is page 2, and so on.
 
-**MANDATORY CATEGORY LIST (ALBANIAN):**
-You MUST select one of the following categories for every single expense item. The 'category' field CANNOT be null or empty.
+**MANDATORY CATEGORY LIST (ALBANIAN SUB-CATEGORIES):**
+You MUST select one of the following detailed sub-categories for every single expense item. The 'category' field CANNOT be null or empty.
 [
-  "Ushqim & Pije", 
-  "Transport", 
-  "Akomodim", 
-  "Pajisje Elektronike", 
-  "Zyre & Shpenzime Operative", 
-  "Marketing & Reklamim", 
-  "Komunikim", 
-  "Trajnim & Zhvillim Profesional", 
-  "Taksat & Tarifat", 
-  "Mirembajtje & Riparime", 
-  "Te Tjera" 
+  "660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional",
+  "665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera",
+  "667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi",
+  "668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti",
+  "669-01 Shpenzimet e karburantit", "669-02 Mirembajtje e riparim",
+  "675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks",
+  "683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses",
+  "686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes",
+  "690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare", "690-09 Te tjera"
 ]
 
 **DATA EXTRACTION FIELDS (in Albanian):**
 You must extract the following fields for EACH line item:
 - name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
-- category: **MANDATORY.** Select one category from the list above. If the item does not fit any category, you MUST use "Te Tjera". **ENSURE THIS FIELD IS PRESENT IN THE JSON OUTPUT.**
+- category: **MANDATORY.** Select one detailed sub-category from the list above. If the item does not fit any category, you MUST use "690-09 Te tjera". **ENSURE THIS FIELD IS PRESENT IN THE JSON OUTPUT.**
 - amount: The price of the individual line item, as a number, correctly handling decimals.
 - date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
 - merchant: The name of the merchant or store. This will likely be the same for all items.
@@ -131,13 +129,28 @@ serve(async (req) => {
     const data = await response.json();
     const content = JSON.parse(data.choices[0].message.content);
 
-    // --- MANDATORY FALLBACK: Ensure every expense has a category ---
+    // --- MANDATORY FALLBACK: Ensure every expense has a valid sub-category ---
+    const DEFAULT_FALLBACK_CATEGORY = "690-09 Te tjera";
+    const VALID_CATEGORIES = [
+      "660-01 Paga bruto", "660-02 Sigurimi shendetesor", "660-03 Kontributi pensional",
+      "665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera",
+      "667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi",
+      "668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti",
+      "669-01 Shpenzimet e karburantit", "669-02 Mirembajtje e riparim",
+      "675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks",
+      "683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses",
+      "686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes",
+      "690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare", "690-09 Te tjera"
+    ];
+
     if (content.expenses && Array.isArray(content.expenses)) {
       content.expenses = content.expenses.map((expense: any) => {
-        // Check for missing, null, or empty string category
-        if (!expense.category || typeof expense.category !== 'string' || expense.category.trim() === '') {
-          console.warn(`AI failed to provide a category for item: ${expense.name || 'Unknown Item'}. Forcing 'Te Tjera'.`);
-          return { ...expense, category: 'Te Tjera' };
+        const category = expense.category || '';
+        
+        // Check if the category is missing, null, empty, or not one of the valid subcategories
+        if (!category.trim() || !VALID_CATEGORIES.includes(category.trim())) {
+          console.warn(`AI failed to provide a valid sub-category for item: ${expense.name || 'Unknown Item'}. Forcing '${DEFAULT_FALLBACK_CATEGORY}'.`);
+          return { ...expense, category: DEFAULT_FALLBACK_CATEGORY };
         }
         return expense;
       });
