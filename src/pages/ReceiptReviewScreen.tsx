@@ -218,113 +218,118 @@ const ReceiptReviewScreen = () => {
           <p className="text-sm text-muted-foreground">Verify and edit the extracted expense items.</p>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6 p-6">
-          <aside className="w-full md:w-2/5 md:sticky md:top-24 h-[calc(100vh-8rem)]">
-            <div className="h-full overflow-y-auto border rounded-lg">
-              <ReceiptViewer receiptId={receiptId} />
-            </div>
+        <div className="flex flex-col lg:flex-row gap-6 p-6">
+          {/* Left Column: Receipt Viewer */}
+          {/* FIX 1: Changed fixed height to dynamic height to prevent cutoff */}
+          <aside className="w-full lg:w-2/5 h-[calc(100vh-200px)] overflow-y-auto border rounded-lg">
+            <ReceiptViewer receiptId={receiptId} />
           </aside>
 
-          <main className="w-full md:w-3/5">
+          {/* Right Column: Expense Forms */}
+          {/* FIX 2 & 4: Removed isolated scroll container, forms now live in main page flow for unified scrolling */}
+          <main className="w-full lg:w-3/5">
             <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
-              <div className="grid gap-6">
+              <div className="space-y-6">
                 {editedExpenses.map((expense, index) => (
-                  <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 gap-4 border p-4 rounded-lg shadow-sm">
-                    <div className="col-span-full flex justify-between items-center">
+                  <div key={expense.id || index} className="border p-4 rounded-lg shadow-sm">
+                    <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-semibold">Expense #{index + 1}</h3>
                       <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
 
-                    <div className="col-span-full">
-                      <Label htmlFor={`name-${index}`}>Name</Label>
-                      <Input id={`name-${index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
-                    </div>
+                    {/* FIX 3: Refined grid layout to prevent horizontal overflow */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                      <div className="md:col-span-12">
+                        <Label htmlFor={`name-${index}`}>Name</Label>
+                        <Input id={`name-${index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div className="col-span-full">
-                      <Label htmlFor={`category-${index}`}>Category</Label>
-                      <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
-                        <SelectTrigger id={`category-${index}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
-                            <SelectGroup key={mainCategory}>
-                              <SelectLabel>{mainCategory}</SelectLabel>
-                              {subcategories.map((sub) => (<SelectItem key={sub} value={sub}>{sub}</SelectItem>))}
-                            </SelectGroup>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      <div className="md:col-span-12">
+                        <Label htmlFor={`category-${index}`}>Category</Label>
+                        <Select onValueChange={(value) => handleInputChange(index, 'category', value)} value={expense.category} disabled={isLoading}>
+                          <SelectTrigger id={`category-${index}`}><SelectValue placeholder="Select a category" /></SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(expenseCategories).map(([mainCategory, subcategories]) => (
+                              <SelectGroup key={mainCategory}>
+                                <SelectLabel>{mainCategory}</SelectLabel>
+                                {subcategories.map((sub) => (<SelectItem key={sub} value={sub}>{sub}</SelectItem>))}
+                              </SelectGroup>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`amount-${index}`}>Amount</Label>
-                      <Input id={`amount-${index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', e.target.value)} disabled={isLoading} />
-                    </div>
+                      <div className="md:col-span-6">
+                        <Label htmlFor={`amount-${index}`}>Amount</Label>
+                        <Input id={`amount-${index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`date-${index}`}>Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !expense.date && 'text-muted-foreground')} disabled={isLoading}>
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar mode="single" selected={new Date(expense.date)} onSelect={(d) => handleInputChange(index, 'date', format(d!, 'yyyy-MM-dd'))} initialFocus />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
+                      <div className="md:col-span-6">
+                        <Label htmlFor={`date-${index}`}>Date</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant={'outline'} className={cn('w-full justify-start text-left font-normal', !expense.date && 'text-muted-foreground')} disabled={isLoading}>
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {expense.date ? format(new Date(expense.date), 'PPP') : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                            <Calendar mode="single" selected={new Date(expense.date)} onSelect={(d) => handleInputChange(index, 'date', format(d!, 'yyyy-MM-dd'))} initialFocus />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`sasia-${index}`}>Sasia (Qty)</Label>
-                      <Input id={`sasia-${index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', e.target.value)} disabled={isLoading} />
-                    </div>
+                      <div className="md:col-span-6">
+                        <Label htmlFor={`sasia-${index}`}>Sasia (Qty)</Label>
+                        <Input id={`sasia-${index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`njesia-${index}`}>Njesia (Unit)</Label>
-                      <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
-                        <SelectTrigger id={`njesia-${index}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
-                        <SelectContent>{NJESIA_OPTIONS.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
-                      </Select>
-                    </div>
+                      <div className="md:col-span-6">
+                        <Label htmlFor={`njesia-${index}`}>Njesia (Unit)</Label>
+                        <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
+                          <SelectTrigger id={`njesia-${index}`}><SelectValue placeholder="Select unit" /></SelectTrigger>
+                          <SelectContent>{NJESIA_OPTIONS.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
+                        </Select>
+                      </div>
 
-                    <div className="col-span-full">
-                      <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
-                      <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
-                        <SelectTrigger id={`vat_code-${index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
-                        <SelectContent>{vatCodes.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor={`merchant-${index}`}>Merchant</Label>
-                      <Input id={`merchant-${index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value)} disabled={isLoading} />
-                    </div>
+                      <div className="md:col-span-12">
+                        <Label htmlFor={`vat_code-${index}`}>VAT Code</Label>
+                        <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
+                          <SelectTrigger id={`vat_code-${index}`}><SelectValue placeholder="Select VAT code" /></SelectTrigger>
+                          <SelectContent>{vatCodes.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="md:col-span-4">
+                        <Label htmlFor={`merchant-${index}`}>Merchant</Label>
+                        <Input id={`merchant-${index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`nui-${index}`}>NUI</Label>
-                      <Input id={`nui-${index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value)} disabled={isLoading} />
-                    </div>
+                      <div className="md:col-span-4">
+                        <Label htmlFor={`nui-${index}`}>NUI</Label>
+                        <Input id={`nui-${index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`nr_fiskal-${index}`}>Nr. Fiskal</Label>
-                      <Input id={`nr_fiskal-${index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value)} disabled={isLoading} />
-                    </div>
+                      <div className="md:col-span-4">
+                        <Label htmlFor={`nr_fiskal-${index}`}>Nr. Fiskal</Label>
+                        <Input id={`nr_fiskal-${index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div>
-                      <Label htmlFor={`numri_i_tvsh_se-${index}`}>Numri i TVSH-se</Label>
-                      <Input id={`numri_i_tvsh_se-${index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value)} disabled={isLoading} />
-                    </div>
+                      <div className="md:col-span-12">
+                        <Label htmlFor={`numri_i_tvsh_se-${index}`}>Numri i TVSH-se</Label>
+                        <Input id={`numri_i_tvsh_se-${index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value)} disabled={isLoading} />
+                      </div>
 
-                    <div className="col-span-full">
-                      <Label htmlFor={`description-${index}`}>Description</Label>
-                      <Textarea id={`description-${index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value)} disabled={isLoading} />
+                      <div className="md:col-span-12">
+                        <Label htmlFor={`description-${index}`}>Description</Label>
+                        <Textarea id={`description-${index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value)} disabled={isLoading} />
+                      </div>
                     </div>
                   </div>
                 ))}
-                <Button onClick={addNewExpense} variant="secondary" className="mt-4" disabled={isLoading}>
+                <Button onClick={addNewExpense} variant="secondary" className="w-full" disabled={isLoading}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Add New Expense Item
                 </Button>
               </div>
@@ -332,6 +337,7 @@ const ReceiptReviewScreen = () => {
           </main>
         </div>
 
+        {/* Footer with action buttons */}
         <div className="p-6 border-t bg-background flex-shrink-0">
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>Cancel</Button>
