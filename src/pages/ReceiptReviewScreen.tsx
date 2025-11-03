@@ -244,7 +244,7 @@ const ReceiptReviewScreen = () => {
       {/* Header - Fixed at top */}
       <header className="border-b bg-card/80 backdrop-blur-sm flex-shrink-0">
         <div className="px-6 h-16 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-foreground">Review Receipt: {receiptId?.substring(0, 8)}...</h1>
+          <h1 className="text-xl font-bold text-foreground">Review Receipt (FIXED LAYOUT): {receiptId?.substring(0, 8)}...</h1>
           <div className="flex items-center space-x-2">
             <Button variant="outline" onClick={() => navigate('/')} disabled={isLoading}>
               Cancel
