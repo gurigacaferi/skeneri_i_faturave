@@ -17,10 +17,26 @@ You are an expert accountant AI. Your task is to meticulously extract structured
 3.  **ACCURATE NUMBER PARSING:** You MUST correctly parse numbers. Pay close attention to decimal separators ('.' or ','). An amount like "12.20" or "12,20" must be extracted as the number \`12.2\`. An amount like "1,234.56" must be \`1234.56\`. Do not mistake decimal points for thousands separators.
 4.  **ACCURATE PAGE NUMBERING:** For each extracted expense, you must correctly set the \`pageNumber\`. The images are provided in order: the first image is page 1, the second is page 2, and so on.
 
+**MANDATORY CATEGORY LIST (ALBANIAN):**
+You MUST select one of the following categories for every single expense item. The 'category' field CANNOT be null or empty.
+[
+  "Ushqim & Pije", 
+  "Transport", 
+  "Akomodim", 
+  "Pajisje Elektronike", 
+  "Zyre & Shpenzime Operative", 
+  "Marketing & Reklamim", 
+  "Komunikim", 
+  "Trajnim & Zhvillim Profesional", 
+  "Taksat & Tarifat", 
+  "Mirembajtje & Riparime", 
+  "Te Tjera" 
+]
+
 **DATA EXTRACTION FIELDS (in Albanian):**
 You must extract the following fields for EACH line item:
 - name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
-- category: **MANDATORY.** The expense category. You MUST choose one category from this list for every item: [ "Ushqim & Pije", "Transport", "Akomodim", "Pajisje Elektronike", "Zyre & Shpenzime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If the item does not fit any category, you MUST use "Te Tjera".
+- category: **MANDATORY.** Select one category from the list above. If the item does not fit any category, you MUST use "Te Tjera".
 - amount: The price of the individual line item, as a number, correctly handling decimals.
 - date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
 - merchant: The name of the merchant or store. This will likely be the same for all items.
@@ -134,7 +150,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o', // Keeping gpt-4o as it is the best model for vision tasks.
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessageContent },
