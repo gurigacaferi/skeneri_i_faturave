@@ -256,7 +256,7 @@ const ReceiptReviewScreen = () => {
   }
 
   return (
-    // Outer wrapper: Standard page container
+    // Outer wrapper: Standard page container, now allowing full page scroll
     <div className="w-full p-4 md:p-8">
       {/* Main content container: Grows naturally */}
       <div className="w-full mx-auto max-w-7xl flex flex-col bg-card rounded-lg shadow-2xl border">
@@ -270,16 +270,19 @@ const ReceiptReviewScreen = () => {
         {/* Main Grid Area: Content grows naturally */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 p-6">
           
-          {/* Left Column: Receipt Viewer (40% width) */}
-          <aside className="md:col-span-2 h-[80vh] overflow-y-auto">
+          {/* Left Column: Receipt Viewer (Fixed height, scrollable) */}
+          {/* FIX 1: Changed h-[80vh] to max-h-[80vh] to prevent cutoff while maintaining scrollability */}
+          <aside className="md:col-span-2 max-h-[80vh] overflow-y-auto">
             <ReceiptViewer receiptId={receiptId} />
           </aside>
 
-          {/* Right Column: Expense Forms (60% width) */}
-          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="md:col-span-3 overflow-y-auto">
+          {/* Right Column: Expense Forms (Content will push the page height) */}
+          {/* FIX 2 & 4: Removed overflow-y-auto from form to allow full page scroll */}
+          <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="md:col-span-3">
             <div className="grid gap-4">
               {editedExpenses.map((expense, index) => (
-                <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-start border-b pb-4 mb-4 last:border-b-0 last:pb-0">
+                // FIX 3: Changed inner grid from md:grid-cols-3 to md:grid-cols-2 for better horizontal spacing
+                <div key={expense.id || index} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 items-start border-b pb-4 mb-4 last:border-b-0 last:pb-0">
                   <div className="col-span-full text-sm font-semibold text-gray-700 dark:text-gray-300 flex justify-between items-center">
                     Expense #{index + 1}
                     <Button variant="destructive" size="icon" onClick={() => removeExpense(index)} disabled={isLoading} title="Delete Expense">
@@ -287,7 +290,7 @@ const ReceiptReviewScreen = () => {
                     </Button>
                   </div>
                   
-                  {/* Row 1: Name, Category */}
+                  {/* Row 1: Name, Category (Full width) */}
                   <div className="col-span-full">
                     <Label htmlFor={`name-${expense.id || index}`}>Name</Label>
                     <Input id={`name-${expense.id || index}`} value={expense.name} onChange={(e) => handleInputChange(index, 'name', e.target.value)} disabled={isLoading} />
@@ -307,7 +310,7 @@ const ReceiptReviewScreen = () => {
                     </Select>
                   </div>
 
-                  {/* Row 2: Amount, Date, VAT Code */}
+                  {/* Row 2: Amount, Date */}
                   <div>
                     <Label htmlFor={`amount-${expense.id || index}`}>Amount</Label>
                     <Input id={`amount-${expense.id || index}`} type="number" step="0.01" value={expense.amount} onChange={(e) => handleInputChange(index, 'amount', parseFloat(e.target.value) || 0)} disabled={isLoading} />
@@ -326,6 +329,8 @@ const ReceiptReviewScreen = () => {
                       </PopoverContent>
                     </Popover>
                   </div>
+                  
+                  {/* Row 3: VAT Code, Sasia */}
                   <div>
                     <Label htmlFor={`vat_code-${expense.id || index}`}>VAT Code</Label>
                     <Select onValueChange={(value) => handleInputChange(index, 'vat_code', value)} value={expense.vat_code} disabled={isLoading}>
@@ -333,12 +338,12 @@ const ReceiptReviewScreen = () => {
                       <SelectContent>{vatCodes.map((code) => (<SelectItem key={code} value={code}>{code}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
-
-                  {/* Row 3: Sasia, Njesia, Merchant */}
                   <div>
                     <Label htmlFor={`sasia-${expense.id || index}`}>Sasia (Qty)</Label>
                     <Input id={`sasia-${expense.id || index}`} type="number" step="1" value={expense.sasia || 1} onChange={(e) => handleInputChange(index, 'sasia', parseFloat(e.target.value) || 0)} disabled={isLoading} />
                   </div>
+
+                  {/* Row 4: Njesia, Merchant */}
                   <div>
                     <Label htmlFor={`njesia-${expense.id || index}`}>Njesia (Unit)</Label>
                     <Select onValueChange={(value) => handleInputChange(index, 'njesia', value)} value={expense.njesia || NJESIA_OPTIONS[0]} disabled={isLoading}>
@@ -353,7 +358,7 @@ const ReceiptReviewScreen = () => {
                     <Input id={`merchant-${expense.id || index}`} value={expense.merchant || ''} onChange={(e) => handleInputChange(index, 'merchant', e.target.value || null)} disabled={isLoading} />
                   </div>
 
-                  {/* Row 4: NUI, Nr. Fiskal, Numri i TVSH-se */}
+                  {/* Row 5: NUI, Nr. Fiskal */}
                   <div>
                     <Label htmlFor={`nui-${expense.id || index}`}>NUI</Label>
                     <Input id={`nui-${expense.id || index}`} value={expense.nui || ''} onChange={(e) => handleInputChange(index, 'nui', e.target.value || null)} disabled={isLoading} />
@@ -362,12 +367,12 @@ const ReceiptReviewScreen = () => {
                     <Label htmlFor={`nr_fiskal-${expense.id || index}`}>Nr. Fiskal</Label>
                     <Input id={`nr_fiskal-${expense.id || index}`} value={expense.nr_fiskal || ''} onChange={(e) => handleInputChange(index, 'nr_fiskal', e.target.value || null)} disabled={isLoading} />
                   </div>
+                  
+                  {/* Row 6: Numri i TVSH-se, Description (Full width) */}
                   <div>
                     <Label htmlFor={`numri_i_tvsh_se-${expense.id || index}`}>Numri i TVSH-se</Label>
                     <Input id={`numri_i_tvsh_se-${expense.id || index}`} value={expense.numri_i_tvsh_se || ''} onChange={(e) => handleInputChange(index, 'numri_i_tvsh_se', e.target.value || null)} disabled={isLoading} />
                   </div>
-                  
-                  {/* Row 5: Description (Full width) */}
                   <div className="col-span-full">
                     <Label htmlFor={`description-${expense.id || index}`}>Description</Label>
                     <Textarea id={`description-${expense.id || index}`} value={expense.description || ''} onChange={(e) => handleInputChange(index, 'description', e.target.value || null)} disabled={isLoading} />
