@@ -36,7 +36,7 @@ You MUST select one of the following categories for every single expense item. T
 **DATA EXTRACTION FIELDS (in Albanian):**
 You must extract the following fields for EACH line item:
 - name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
-- category: **MANDATORY.** Select one category from the list above. If the item does not fit any category, you MUST use "Te Tjera".
+- category: **MANDATORY.** Select one category from the list above. If the item does not fit any category, you MUST use "Te Tjera". **ENSURE THIS FIELD IS PRESENT IN THE JSON OUTPUT.**
 - amount: The price of the individual line item, as a number, correctly handling decimals.
 - date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
 - merchant: The name of the merchant or store. This will likely be the same for all items.
@@ -54,44 +54,6 @@ You must extract the following fields for EACH line item:
 - Return a single JSON object with one key: "expenses".
 - The value of "expenses" must be an array of JSON objects, where each object represents one extracted line item.
 - If no valid expense data can be found across all images, return an empty "expenses" array.
-
-Example of a valid response for a multi-item receipt:
-{
-  "expenses": [
-    {
-      "name": "Kafe Espresso",
-      "category": "Ushqim & Pije",
-      "amount": 120.50,
-      "date": "2023-10-27",
-      "merchant": "Restorant ABC",
-      "tvsh_percentage": 20,
-      "vat_code": "L12345678M",
-      "pageNumber": 1,
-      "nui": "AB123CD456",
-      "nr_fiskal": "789/2023",
-      "numri_i_tvsh_se": "VAT123456",
-      "description": "Kafe per mengjes",
-      "sasia": 2,
-      "njesia": "cope"
-    },
-    {
-      "name": "Fileto Pule",
-      "category": "Ushqim & Pije",
-      "amount": 850.00,
-      "date": "2023-10-27",
-      "merchant": "Restorant ABC",
-      "tvsh_percentage": 20,
-      "vat_code": "L12345678M",
-      "pageNumber": 1,
-      "nui": "AB123CD456",
-      "nr_fiskal": "789/2023",
-      "numri_i_tvsh_se": "VAT123456",
-      "description": "Dreke me klientin",
-      "sasia": 1,
-      "njesia": "cope"
-    }
-  ]
-}
 `;
 
 serve(async (req) => {
@@ -168,6 +130,19 @@ serve(async (req) => {
 
     const data = await response.json();
     const content = JSON.parse(data.choices[0].message.content);
+
+    // --- MANDATORY FALLBACK: Ensure every expense has a category ---
+    if (content.expenses && Array.isArray(content.expenses)) {
+      content.expenses = content.expenses.map((expense: any) => {
+        // Check for missing, null, or empty string category
+        if (!expense.category || typeof expense.category !== 'string' || expense.category.trim() === '') {
+          console.warn(`AI failed to provide a category for item: ${expense.name || 'Unknown Item'}. Forcing 'Te Tjera'.`);
+          return { ...expense, category: 'Te Tjera' };
+        }
+        return expense;
+      });
+    }
+    // --------------------------------------------------------------
 
     return new Response(JSON.stringify(content), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
