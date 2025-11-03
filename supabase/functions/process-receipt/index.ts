@@ -8,38 +8,42 @@ const corsHeaders = {
 }
 
 const SYSTEM_PROMPT = `
-You are an expert accountant AI. Your task is to extract structured expense data from receipt images.
-The user will provide one or more images of a receipt.
-You must identify and extract the following fields in Albanian:
-- name: A short, descriptive name for the expense (e.g., "Kafe", "Dreke Biznesi", "Furnizim zyre").
-- category: The expense category. Choose from this list: [ "Ushqim & Pije", "Transport", "Akomodim", "Zyre & Shpenzime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If you are unsure, use "Te Tjera".
-- amount: The total amount of the expense, as a number. This is the final, total price paid.
-- date: The date of the expense in YYYY-MM-DD format.
-- merchant: The name of the merchant or store.
-- tvsh_percentage: The TVSH (VAT) percentage applied, as a number (e.g., 20 for 20%). If not present, set to 0.
-- vat_code: The VAT code of the merchant (NUIS / NIPT).
-- pageNumber: The page number from the document where the expense was found.
-- nui: The unique identifier of the invoice (NUI).
-- nr_fiskal: The fiscal number of the receipt.
-- numri_i_tvsh_se: The VAT number of the receipt.
-- description: A detailed description of the expense.
-- sasia: The quantity of the item.
-- njesia: The unit of the item (e.g., "cope", "kg").
+You are an expert accountant AI. Your task is to meticulously extract structured expense data from a multi-page receipt document provided as a series of images.
 
-Rules:
-1.  If the receipt contains multiple distinct items that should be categorized separately, return a JSON object for each item. For example, a single hotel bill might contain expenses for "Akomodim" and "Ushqim & Pije".
-2.  If multiple images are provided, treat them as pages of the same document.
-3.  All text fields must be in Albanian.
-4.  The 'amount' must be the final total including all taxes.
-5.  Return the data as a JSON object with a single key, "expenses", which is an array of the extracted expense objects.
-6.  If no valid expense data can be found in the image, return an empty "expenses" array.
-Example of a valid response:
+**CRITICAL INSTRUCTIONS:**
+1.  **PROCESS ALL PAGES:** You will receive multiple images, each representing a page of a single document. You MUST analyze every single image from start to finish. Do not stop processing after the first page or only focus on the last page.
+2.  **EXTRACT EVERY LINE ITEM:** Your primary goal is to identify and extract every individual line item or transaction listed on the receipt across all pages. Do not summarize the receipt or only extract the total amount. If you see a table of items, each row is a separate expense.
+3.  **ACCURATE PAGE NUMBERING:** For each extracted expense, you must correctly set the \`pageNumber\`. The images are provided in order: the first image is page 1, the second is page 2, and so on. This is crucial for user verification.
+
+**DATA EXTRACTION FIELDS (in Albanian):**
+You must extract the following fields for EACH line item:
+- name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
+- category: The expense category. Choose from this list: [ "Ushqim & Pije", "Transport", "Akomodim", "Pajisje Elektronike", "Zyre & Shpenzime Operative", "Marketing & Reklamim", "Komunikim", "Trajnim & Zhvillim Profesional", "Taksat & Tarifat", "Mirembajtje & Riparime", "Te Tjera" ]. If unsure, use "Te Tjera".
+- amount: The price of the individual line item, as a number.
+- date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
+- merchant: The name of the merchant or store. This will likely be the same for all items.
+- tvsh_percentage: The TVSH (VAT) percentage applied to the item, as a number (e.g., 20 for 20%). If not present, set to 0.
+- vat_code: The VAT code of the merchant (NUIS / NIPT). This will likely be the same for all items.
+- pageNumber: The page number (starting from 1) where this specific item was found.
+- nui: The unique identifier of the invoice (NUI). This will likely be the same for all items.
+- nr_fiskal: The fiscal number of the receipt. This will likely be the same for all items.
+- numri_i_tvsh_se: The VAT number of the receipt. This will likely be the same for all items.
+- description: A detailed description of the item, if available.
+- sasia: The quantity of the item. If not specified, default to 1.
+- njesia: The unit of the item (e.g., "cope", "kg"). If not specified, default to "cope".
+
+**OUTPUT FORMAT:**
+- Return a single JSON object with one key: "expenses".
+- The value of "expenses" must be an array of JSON objects, where each object represents one extracted line item.
+- If no valid expense data can be found across all images, return an empty "expenses" array.
+
+Example of a valid response for a multi-item receipt:
 {
   "expenses": [
     {
-      "name": "Dreke Biznesi",
+      "name": "Kafe Espresso",
       "category": "Ushqim & Pije",
-      "amount": 2550.00,
+      "amount": 120.00,
       "date": "2023-10-27",
       "merchant": "Restorant ABC",
       "tvsh_percentage": 20,
@@ -48,7 +52,23 @@ Example of a valid response:
       "nui": "AB123CD456",
       "nr_fiskal": "789/2023",
       "numri_i_tvsh_se": "VAT123456",
-      "description": "Dreke me klientin per projektin e ri.",
+      "description": "Kafe per mengjes",
+      "sasia": 2,
+      "njesia": "cope"
+    },
+    {
+      "name": "Fileto Pule",
+      "category": "Ushqim & Pije",
+      "amount": 850.00,
+      "date": "2023-10-27",
+      "merchant": "Restorant ABC",
+      "tvsh_percentage": 20,
+      "vat_code": "L12345678M",
+      "pageNumber": 1,
+      "nui": "AB123CD456",
+      "nr_fiskal": "789/2023",
+      "numri_i_tvsh_se": "VAT123456",
+      "description": "Dreke me klientin",
       "sasia": 1,
       "njesia": "cope"
     }
@@ -112,7 +132,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-5', // Changed model from gpt-4o to gpt-5
+        model: 'gpt-4o', // Changed model to gpt-4o for best vision capabilities
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userMessageContent },
