@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSession } from '@/components/SessionContextProvider';
 import InvitationGenerator from '@/components/InvitationGenerator';
-import SetAdminRoleForm from '@/components/SetAdminRoleForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Separator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -61,14 +60,6 @@ const AdminPage: React.FC = () => {
       <main className="container mx-auto px-4 py-8 space-y-8">
         <h2 className="text-3xl font-bold mb-6 text-foreground">Administration Tools</h2>
         
-        <SetAdminRoleForm />
-        
-        <div className="flex items-center">
-          <div className="flex-grow border-t border-border" />
-          <span className="mx-4 text-sm text-muted-foreground">OR</span>
-          <div className="flex-grow border-t border-border" />
-        </div>
-
         <InvitationGenerator />
       </main>
     </div>
