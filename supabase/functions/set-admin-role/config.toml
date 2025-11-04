@@ -1,6 +1,5 @@
 # To expose the SUPABASE_SERVICE_ROLE_KEY to the Deno runtime,
 # you must explicitly list it here.
 # The SUPABASE_URL is automatically included.
-# The SUPABASE_ANON_KEY is not needed for admin functions.
 import_map = "../import_map.json"
 envs = ["SUPABASE_SERVICE_ROLE_KEY"]
