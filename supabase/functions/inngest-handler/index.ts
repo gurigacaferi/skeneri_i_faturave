@@ -65,26 +65,10 @@ async function fileToImages(supabase: SupabaseClient, storagePath: string) {
   const uint8Array = new Uint8Array(buffer);
 
   if (data.type === 'application/pdf') {
-    const pdf = await pdfjs.getDocument(uint8Array).promise;
-    const images = [];
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 3 });
-      const canvas = new OffscreenCanvas(viewport.width, viewport.height);
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Could not get canvas context');
-
-      await page.render({ canvasContext: context, viewport }).promise;
-      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
-      const base64 = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      images.push(base64 as string);
-    }
-    return images;
+    // NOTE: PDF processing in Deno Edge Functions is complex due to missing Canvas APIs.
+    // We will throw an explicit error for PDF to prevent silent failures, advising the user
+    // to convert files before upload or use a dedicated service.
+    throw new Error("PDF processing is not supported in this Deno environment. Please upload images (JPG/PNG) only.");
   } else if (data.type.startsWith('image/')) {
      const base64 = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
      return [base64];
@@ -108,7 +92,7 @@ const processReceipt = new Inngest({ id: 'fatural-app' }).createFunction(
           role: 'user',
           content: [
             { type: 'text', text: 'Extract all expense line items from the following document images:' },
-            ...images.map((base64, i) => ({
+            ...images.map((base64) => ({
               type: 'image_url',
               image_url: {
                 url: `data:image/jpeg;base64,${base64}`,
@@ -139,7 +123,7 @@ const processReceipt = new Inngest({ id: 'fatural-app' }).createFunction(
         throw new Error('Invalid JSON structure from OpenAI. "expenses" is not an array.');
       }
 
-      const expensesToInsert = expenses.map(expense => ({
+      const expensesToInsert = expenses.map((expense: any) => ({
         receipt_id: receiptId,
         user_id: userId,
         description: expense.description,

@@ -7,6 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Initialize Inngest client
 const inngest = new Inngest({
   id: 'fatural-app',
   eventKey: Deno.env.get('INNGEST_EVENT_KEY'),
@@ -23,6 +24,7 @@ serve(async (req) => {
       throw new Error('receiptId and storagePath are required.');
     }
 
+    // Initialize Supabase client with the user's auth token
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -33,10 +35,12 @@ serve(async (req) => {
     if (!user) throw new Error('User not authenticated.');
 
     // Update receipt status to 'processing'
-    await supabase
+    const { error: updateError } = await supabase
       .from('receipts')
       .update({ status: 'processing' })
       .eq('id', receiptId);
+      
+    if (updateError) throw new Error(`Failed to update receipt status: ${updateError.message}`);
 
     // Send an event to Inngest to start the background job
     await inngest.send({
