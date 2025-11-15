@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSession } from '@/components/SessionContextProvider';
 import {
@@ -12,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Filter, Download, Settings, FileDown } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download, Settings } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -49,10 +47,9 @@ interface Expense {
   nr_fiskal: string | null;
   numri_i_tvsh_se: string | null;
   description: string | null;
-  sasia: number | null;
-  njesia: string | null;
-  receipt_id: string | null;
-  processing_status: 'pending' | 'processing' | 'completed' | 'failed' | null;
+  sasia: number | null; // NEW FIELD
+  njesia: string | null; // NEW FIELD
+  receipt_id: string | null; // ADDED FIELD
 }
 
 interface ExpensesListProps {
@@ -68,7 +65,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   
   // State for selection
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
@@ -89,46 +85,50 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Determine which columns to fetch from the database
-  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia, receipt_id, processing_status';
+  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia, receipt_id';
 
   // Effect for fetching data, now depends on debounced values
-  const fetchExpenses = useCallback(async () => {
-    if (!session) return;
+  useEffect(() => {
+    const fetchExpenses = async () => {
+      if (!session) return;
 
-    setLoading(true);
-    let query = supabase
-      .from('expenses')
-      .select(selectColumns)
-      .eq('user_id', session.user.id);
+      setLoading(true);
+      let query = supabase
+        .from('expenses')
+        .select(selectColumns)
+        .eq('user_id', session.user.id);
 
-    // Apply filters using debounced values
-    if (dateRange.from) {
-      query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
-    }
-    if (dateRange.to) {
-      query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
-    }
-    if (debouncedMinAmount) {
-      query = query.gte('amount', parseFloat(debouncedMinAmount));
-    }
-    if (debouncedMaxAmount) {
-      query = query.lte('amount', parseFloat(debouncedMaxAmount));
-    }
-    if (debouncedSearchTerm) {
-      const searchLower = `%${debouncedSearchTerm.toLowerCase()}%`;
-      query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
-    }
+      // Apply filters using debounced values
+      if (dateRange.from) {
+        query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
+      }
+      if (dateRange.to) {
+        query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
+      }
+      if (debouncedMinAmount) {
+        query = query.gte('amount', parseFloat(debouncedMinAmount));
+      }
+      if (debouncedMaxAmount) {
+        query = query.lte('amount', parseFloat(debouncedMaxAmount));
+      }
+      if (debouncedSearchTerm) {
+        const searchLower = `%${debouncedSearchTerm.toLowerCase()}%`;
+        query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
+      }
 
-    const { data, error } = await query.order('date', { ascending: false });
+      const { data, error } = await query.order('date', { ascending: false });
 
-    if (error) {
-      showError('Failed to fetch expenses: ' + error.message);
-    } else {
-      setExpenses(data || []);
-      // Clear selection when data refreshes
-      setSelectedExpenseIds(new Set());
-    }
-    setLoading(false);
+      if (error) {
+        showError('Failed to fetch expenses: ' + error.message);
+      } else {
+        setExpenses(data || []);
+        // Clear selection when data refreshes
+        setSelectedExpenseIds(new Set());
+      }
+      setLoading(false);
+    };
+
+    fetchExpenses();
   }, [
     session,
     supabase,
@@ -136,12 +136,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     debouncedMinAmount,
     debouncedMaxAmount,
     debouncedSearchTerm,
-    selectColumns
+    refreshTrigger,
   ]);
-
-  useEffect(() => {
-    fetchExpenses();
-  }, [fetchExpenses, refreshTrigger]);
 
   const handleClearFilters = () => {
     setDateRange({ from: undefined, to: undefined, label: "custom" });
@@ -207,70 +203,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const handleEditClick = (expense: Expense) => {
     setCurrentExpenseToEdit(expense);
     setIsEditDialogOpen(true);
-  };
-
-  // Function to handle receipt download
-  const handleDownloadReceipt = async (expense: Expense) => {
-    if (!session || !expense.receipt_id) {
-      showError('No receipt image associated with this expense.');
-      return;
-    }
-
-    setDownloadingId(expense.id);
-    const toastId = showLoading('Preparing receipt for download...');
-
-    try {
-      // 1. Get the storage path and filename from the receipt table
-      const { data: receiptData, error: fetchError } = await supabase
-        .from('receipts')
-        .select('storage_path, filename')
-        .eq('id', expense.receipt_id)
-        .single();
-
-      if (fetchError || !receiptData?.storage_path) {
-        throw new Error('Could not find receipt file path.');
-      }
-
-      const storagePath = receiptData.storage_path;
-      const filename = receiptData.filename || `receipt_${expense.id}`;
-      const fileExtension = filename.split('.').pop() || 'jpg';
-
-      // 2. Get the signed URL
-      const { data: signedUrlData, error: signedError } = await supabase.storage
-        .from('receipts')
-        .createSignedUrl(storagePath, 60); // 60 seconds validity
-
-      if (signedError || !signedUrlData?.signedUrl) {
-        throw new Error('Failed to generate signed URL.');
-      }
-
-      // 3. Fetch the file content using the signed URL
-      const response = await fetch(signedUrlData.signedUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
-      
-      // 4. Trigger the download
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${expense.merchant || 'receipt'}_${format(new Date(expense.date), 'yyyyMMdd')}.${fileExtension}`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      showSuccess('Receipt download started.');
-
-    } catch (error: any) {
-      showError('Failed to download receipt: ' + error.message);
-      console.error('Download error:', error);
-    } finally {
-      dismissToast(toastId);
-      setDownloadingId(null);
-    }
   };
 
   // Get the user's preferred columns, or use the default list
@@ -468,8 +400,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                     <TableHead className="py-3 px-4">Merchant</TableHead>
                     <TableHead className="py-3 px-4">Item</TableHead>
                     <TableHead className="py-3 px-4">Category</TableHead>
-                    <TableHead className="py-3 px-4">Sasia</TableHead>
-                    <TableHead className="py-3 px-4">Njesia</TableHead>
+                    <TableHead className="py-3 px-4">Sasia</TableHead> {/* NEW HEADER */}
+                    <TableHead className="py-3 px-4">Njesia</TableHead> {/* NEW HEADER */}
                     <TableHead className="text-right py-3 px-4">Amount</TableHead>
                     <TableHead className="text-right py-3 px-4">VAT Code</TableHead>
                     <TableHead className="text-center py-3 px-4">Actions</TableHead>
@@ -489,74 +421,49 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                       <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
                       <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
-                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell>
-                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell>
+                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell> {/* NEW CELL */}
+                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell> {/* NEW CELL */}
                       <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
                       <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center justify-center space-x-1">
-                          {expense.processing_status === 'pending' || expense.processing_status === 'processing' ? (
-                            <div className="flex items-center text-primary/80" title="Processing in background">
-                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                              <span className="text-xs">Proc...</span>
-                            </div>
-                          ) : (
-                            <>
-                              {expense.receipt_id && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-foreground/60 hover:text-green-500 hover:bg-accent"
-                                  onClick={() => handleDownloadReceipt(expense)}
-                                  disabled={downloadingId === expense.id}
-                                  title="Download Receipt Image"
-                                >
-                                  {downloadingId === expense.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <FileDown className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-foreground/60 hover:text-primary hover:bg-accent"
-                                onClick={() => handleEditClick(expense)}
-                              >
-                                <Pencil className="h-4 w-4" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-foreground/60 hover:text-primary hover:bg-accent"
+                            onClick={() => handleEditClick(expense)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This action cannot be undone. This will permanently delete the expense "{expense.name}".
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteExpense(expense.id)}
-                                      disabled={deletingId === expense.id}
-                                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                                    >
-                                      {deletingId === expense.id ? (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                      ) : (
-                                        'Delete'
-                                      )}
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </>
-                          )}
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. This will permanently delete the expense "{expense.name}".
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  disabled={deletingId === expense.id}
+                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                >
+                                  {deletingId === expense.id ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    'Delete'
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -571,7 +478,10 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             open={isEditDialogOpen}
             onOpenChange={setIsEditDialogOpen}
             expense={currentExpenseToEdit}
-            onExpenseUpdated={fetchExpenses}
+            onExpenseUpdated={() => {
+              // Trigger a refresh by incrementing the trigger state if needed, 
+              // but for now, we rely on the component re-rendering after dialog closes.
+            }}
           />
         )}
       </Card>

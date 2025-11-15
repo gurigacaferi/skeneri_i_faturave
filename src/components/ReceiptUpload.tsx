@@ -1,238 +1,315 @@
-'use client';
+"use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useSession } from '@/components/SessionContextProvider';
+import React, { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { showSuccess, showError, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Upload, FileText, XCircle, CheckCircle } from 'lucide-react';
+import { useSession } from '@/components/SessionContextProvider';
+import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTriangle } from 'lucide-react';
+import ExpenseSplitterDialog from './ExpenseSplitterDialog';
+import { v4 as uuidv4 } from 'uuid';
+import { Progress } from '@/components/ui/progress';
+import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
+import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
 
 interface ReceiptUploadProps {
-  onUploadSuccess: () => void;
+  onReceiptProcessed: () => void;
+  selectedBatchId: string | null;
 }
 
-type ProcessingStatus = 'idle' | 'uploading' | 'pending' | 'processing' | 'completed' | 'failed';
+interface ExtractedExpenseWithReceiptId {
+  receiptId: string;
+  expense: {
+    name: string;
+    category: string;
+    amount: number;
+    date: string;
+    merchant: string | null;
+    tvsh_percentage: number;
+    vat_code: string;
+    pageNumber: number;
+    nui: string | null;
+    nr_fiskal: string | null;
+    numri_i_tvsh_se: string | null;
+    description: string | null;
+    sasia: number | null;
+    njesia: string | null;
+  };
+}
 
-const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onUploadSuccess }) => {
-  const { supabase, session } = useSession();
-  const [file, setFile] = useState<File | null>(null);
-  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('idle');
-  const [progress, setProgress] = useState(0);
-  const [receiptId, setReceiptId] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+interface UploadedFile extends File {
+  id: string;
+  status: 'pending' | 'uploading' | 'processing' | 'processed' | 'failed' | 'unsupported';
+  progress: number;
+  receiptId?: string;
+  errorMessage?: string;
+  storagePath?: string; // Added storagePath to track where the file is saved
+}
 
-  // Realtime subscription effect (the original logic)
-  useEffect(() => {
-    if (!supabase || !receiptId) return;
+const ACCEPTED_MIME_TYPES = {
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/webp': ['.webp'],
+  'application/pdf': ['.pdf'],
+  'image/gif': ['.gif'],
+  'image/bmp': ['.bmp'],
+  'image/heic': ['.heic'],
+  'image/heif': ['.heif'],
+};
 
-    const channel = supabase
-      .channel(`receipt_${receiptId}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'receipts',
-          filter: `id=eq.${receiptId}`
-        },
-        (payload) => {
-          const newStatus = (payload.new as { processing_status: string, error_message: string | null }).processing_status as ProcessingStatus;
-          const newError = (payload.new as { processing_status: string, error_message: string | null }).error_message;
+const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selectedBatchId }) => {
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const { session, supabase } = useSession();
 
-          setProcessingStatus(newStatus);
-          setErrorMessage(newError);
+  const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
+  const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>([]);
 
-          if (newStatus === 'processing') {
-            setProgress(50);
-          } else if (newStatus === 'completed') {
-            setProgress(100);
-            showSuccess('Receipt processed successfully! Expense added.');
-            onUploadSuccess(); // Trigger list refresh
-            setTimeout(() => handleReset(), 5000);
-          } else if (newStatus === 'failed') {
-            setProgress(100);
-            showError(`Processing failed: ${newError || 'Unknown error'}`);
-          }
-        }
+  const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
+  const filesToProcess = files.filter(f => f.status === 'pending');
+
+  const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
+    setFiles(prevFiles =>
+      prevFiles.map(file =>
+        file.id === fileId ? { ...file, ...updates } : file
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`Subscribed to receipt ${receiptId} status.`);
-        }
-      });
+    );
+  }, []);
 
-    return () => {
-      // This cleanup function is what causes the progress bar to close on navigation
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, receiptId, onUploadSuccess]);
+  const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
+    const newAcceptedFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { 
+      id: uuidv4(), 
+      status: 'pending', 
+      progress: 0,
+      errorMessage: undefined,
+    })) as UploadedFile[];
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      setFile(event.target.files[0]);
-      handleReset(); // Reset status if a new file is selected
-    }
+    const newRejectedFiles: UploadedFile[] = fileRejections.map(({ file, errors }) => Object.assign(file, {
+      id: uuidv4(),
+      status: 'unsupported',
+      progress: 0,
+      errorMessage: errors[0]?.message || 'File type not supported.',
+    })) as UploadedFile[];
+
+    setFiles(prevFiles => [...prevFiles, ...newAcceptedFiles, ...newRejectedFiles]);
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: ACCEPTED_MIME_TYPES,
+    multiple: true,
+  });
+
+  const handleRemoveFile = (fileId: string) => {
+    setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
   };
 
-  const handleReset = () => {
-    setFile(null);
-    setProcessingStatus('idle');
-    setProgress(0);
-    setReceiptId(null);
-    setErrorMessage(null);
+  const getFileIcon = (fileType: string) => {
+    if (typeof fileType === 'string' && fileType.startsWith('image/')) return <Image className="h-5 w-5 text-primary" />;
+    if (fileType === 'application/pdf') return <FileIcon className="h-5 w-5 text-red-500" />;
+    return <FileIcon className="h-5 w-5 text-gray-500" />;
   };
 
-  const handleUpload = useCallback(async () => {
-    if (!file || !session) {
-      showError('Please select a file to upload.');
-      return;
-    }
+  const handleFileUpload = async () => {
+    if (filesToProcess.length === 0) { showError('No files selected or pending processing.'); return; }
+    if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
-    setProcessingStatus('uploading');
-    setProgress(10);
-    const toastId = showLoading(`Uploading ${file.name}...`);
+    setIsUploading(true);
+    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
+    const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
+    let hasError = false;
 
-    try {
-      const fileExtension = file.name.split('.').pop();
-      const storagePath = `${session.user.id}/${Date.now()}.${fileExtension}`;
-
-      // 1. Upload the file to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('receipts')
-        .upload(storagePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        throw new Error(`Storage upload failed: ${uploadError.message}`);
-      }
-
-      // 2. Create a new receipt record with 'pending' status
-      const { data: receiptData, error: receiptError } = await supabase
-        .from('receipts')
-        .insert({
-          user_id: session.user.id,
-          storage_path: storagePath,
-          filename: file.name,
-          processing_status: 'pending', // Initial status
-        })
-        .select('id')
-        .single();
-
-      if (receiptError || !receiptData) {
-        // Clean up storage if database insert fails
-        await supabase.storage.from('receipts').remove([storagePath]);
-        throw new Error(`Database insert failed: ${receiptError?.message || 'No data returned'}`);
-      }
-
-      dismissToast(toastId);
-      showSuccess(`Receipt "${file.name}" uploaded successfully! Processing started...`);
+    for (const file of filesToProcess) {
+      updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
+      let receiptId: string | undefined;
+      let storagePath: string | undefined;
       
-      // 3. Start tracking the job
-      setReceiptId(receiptData.id);
-      setProcessingStatus('pending');
-      setProgress(25);
+      try {
+        const base64Images = await fileToBase64Images(file);
+        updateFileState(file.id, { progress: 20 });
 
-    } catch (error: any) {
-      dismissToast(toastId);
-      showError(error.message);
-      setProcessingStatus('failed');
-      setErrorMessage(error.message);
-      setProgress(100);
-      console.error('Upload error:', error);
+        const fileExtension = file.name.split('.').pop();
+        storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
+        const { error: storageError } = await supabase.storage
+          .from('receipts')
+          .upload(storagePath, file);
+        if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
+        updateFileState(file.id, { progress: 40, storagePath });
+
+        const { data: receiptData, error: receiptInsertError } = await supabase
+          .from('receipts')
+          .insert({ 
+            user_id: session.user.id, 
+            filename: file.name, 
+            batch_id: selectedBatchId,
+            storage_path: storagePath,
+            status: 'processing'
+          })
+          .select('id')
+          .single();
+        if (receiptInsertError) throw new Error(`DB insert failed: ${receiptInsertError.message}`);
+        receiptId = receiptData.id;
+        updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
+
+        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
+          body: { base64Images, receiptId },
+        });
+        updateFileState(file.id, { progress: 90 });
+
+        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
+        if (data.expenses) {
+          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        }
+        
+        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
+        updateFileState(file.id, { progress: 100, status: 'processed' });
+
+      } catch (error: any) {
+        hasError = true;
+        const errorMessage = error.message || 'Unknown error during processing.';
+        updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
+        if (receiptId) {
+            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
+        }
+      }
     }
-  }, [file, session, supabase]);
 
-  const isProcessing = processingStatus !== 'idle' && processingStatus !== 'completed' && processingStatus !== 'failed';
-  const isFinished = processingStatus === 'completed' || processingStatus === 'failed';
+    dismissToast(toastId);
+    setIsUploading(false);
 
-  const getStatusIcon = () => {
-    switch (processingStatus) {
-      case 'uploading':
-      case 'pending':
-      case 'processing':
-        return <Loader2 className="h-5 w-5 mr-2 animate-spin text-primary" />;
-      case 'completed':
-        return <CheckCircle className="h-5 w-5 mr-2 text-green-500" />;
-      case 'failed':
-        return <XCircle className="h-5 w-5 mr-2 text-destructive" />;
-      default:
-        return <FileText className="h-5 w-5 mr-2 text-gray-500" />;
+    if (processedExpenses.length > 0) {
+      showSuccess(hasError ? 'Some receipts were processed successfully.' : 'All receipts processed!');
+      setAllExtractedExpensesForDialog(processedExpenses);
+      setIsSplitterDialogOpen(true);
+    } else if (!hasError) {
+      showError('AI could not extract any expenses from the uploaded files.');
     }
+    
+    onReceiptProcessed();
   };
 
-  const getStatusText = () => {
-    switch (processingStatus) {
-      case 'uploading':
-        return 'Uploading file...';
-      case 'pending':
-        return 'Queued for processing...';
-      case 'processing':
-        return 'AI is extracting data...';
-      case 'completed':
-        return 'Processing complete!';
-      case 'failed':
-        return `Failed: ${errorMessage || 'Unknown error'}`;
-      default:
-        return file ? `Ready to upload: ${file.name}` : 'Select a file to begin.';
-    }
+  const handleExpensesSaved = () => {
+    setIsSplitterDialogOpen(false);
+    setAllExtractedExpensesForDialog(null);
+    // Keep only files that failed processing (not unsupported files, which are already marked)
+    setFiles(prevFiles => prevFiles.filter(f => f.status === 'failed'));
+    onReceiptProcessed();
   };
+
+  const totalProgress = files.length > 0 
+    ? files.reduce((sum, file) => file.status !== 'unsupported' ? sum + file.progress : sum, 0) / files.filter(f => f.status !== 'unsupported').length 
+    : 0;
 
   return (
-    <Card className="w-full max-w-5xl mx-auto shadow-lg shadow-black/5 border-0">
-      <CardHeader>
-        <CardTitle className="text-2xl">Upload Receipt</CardTitle>
-        <CardDescription>Upload an image of your receipt (JPG, PNG, PDF) to automatically extract expense details.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid w-full items-center gap-4">
-          <div className="flex flex-col space-y-1.5">
-            <Label htmlFor="receipt-file">Receipt File</Label>
-            <Input 
-              id="receipt-file" 
-              type="file" 
-              accept=".jpg,.jpeg,.png,.pdf" 
-              onChange={handleFileChange} 
-              disabled={isProcessing}
-            />
-          </div>
-          <Button 
-            onClick={handleUpload} 
-            disabled={!file || isProcessing}
-            className="w-full"
-          >
-            {processingStatus === 'uploading' ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...</>
-            ) : (
-              <><Upload className="mr-2 h-4 w-4" /> Start Processing</>
-            )}
-          </Button>
-        </div>
-
-        {(isProcessing || isFinished) && (
-          <div className="mt-6 p-4 border rounded-lg bg-secondary/50">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center">
-                {getStatusIcon()}
-                <span className={`font-medium ${processingStatus === 'failed' ? 'text-destructive' : ''}`}>
-                  {getStatusText()}
-                </span>
-              </div>
-              {isFinished && (
-                <Button variant="ghost" size="icon" onClick={handleReset} title="Clear status">
-                  <XCircle className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                </Button>
-              )}
+    <>
+      <Card className="w-full max-w-3xl mx-auto shadow-lg shadow-black/5 border-0">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Upload Your Receipts</CardTitle>
+          <CardDescription>Drag and drop your receipt image(s) or PDF(s) below.</CardDescription>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div {...getRootProps()} className="border-2 border-dashed border-primary/30 rounded-lg p-10 text-center cursor-pointer hover:border-primary transition-colors bg-gradient-to-br from-background to-secondary/50" aria-disabled={isUploading}>
+            <input {...getInputProps()} disabled={isUploading} />
+            <div className="flex flex-col items-center justify-center space-y-4 text-foreground/70">
+              <UploadCloud className="h-12 w-12 text-primary/80" />
+              <p>{isDragActive ? "Drop the files here..." : "Drag 'n' drop files here, or click to select"}</p>
             </div>
-            <Progress value={progress} className="w-full" />
           </div>
-        )}
-      </CardContent>
-    </Card>
+          
+          {files.length > 0 && (
+            <div className="mt-6 space-y-4">
+              <p className="text-sm font-medium text-foreground/80">Processing Queue:</p>
+              
+              {isUploading && (
+                <div className="space-y-2">
+                  <Progress value={totalProgress} className="h-2" />
+                  <p className="text-sm text-muted-foreground text-center">Overall Progress: {Math.round(totalProgress)}%</p>
+                </div>
+              )}
+
+              {files.map(file => {
+                const isUnsupported = file.status === 'unsupported';
+                const isFailed = file.status === 'failed';
+                const isErrorState = isUnsupported || isFailed;
+
+                return (
+                  <div 
+                    key={file.id} 
+                    className={cn(
+                      "flex flex-col p-3 border rounded-md transition-colors",
+                      isUnsupported && "border-destructive/50 bg-destructive/10 border-l-4 border-l-destructive",
+                      isFailed && "border-destructive/50 bg-destructive/10 border-l-4 border-l-destructive",
+                    )}
+                    data-status={file.status}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3 min-w-0">
+                        {isErrorState ? (
+                          <X className="h-5 w-5 text-destructive" />
+                        ) : (
+                          getFileIcon(file.type)
+                        )}
+                        <span className={cn("text-sm font-medium truncate", isErrorState && "text-destructive")}>{file.name}</span>
+                        <span className="text-xs text-muted-foreground">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                      </div>
+                      <div className="flex items-center space-x-2 flex-shrink-0">
+                        {file.status === 'pending' && (
+                          <span className="text-xs text-muted-foreground">Ready</span>
+                        )}
+                        {file.status === 'uploading' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        )}
+                        {file.status === 'processing' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        )}
+                        {file.status === 'processed' && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {isErrorState && (
+                          <span className="text-xs text-destructive">Error</span>
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={(e) => { e.stopPropagation(); handleRemoveFile(file.id); }} 
+                          className="h-6 w-6 text-foreground/60 hover:text-destructive"
+                          disabled={isUploading && !isErrorState}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {(file.status === 'uploading' || file.status === 'processing') && (
+                      <Progress value={file.progress} className="h-1 mt-2" />
+                    )}
+                    
+                    {isErrorState && file.errorMessage && (
+                      <p className="text-xs text-destructive mt-1 truncate">{file.errorMessage}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          
+          <Button onClick={handleFileUpload} className="w-full mt-6 h-12 text-lg font-semibold" disabled={filesToProcess.length === 0 || isUploading || !selectedBatchId}>
+            {isUploading ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>) : (`Process ${filesToProcess.length} Receipt(s)`)}
+          </Button>
+          {!selectedBatchId && (<p className="text-sm text-destructive mt-2 text-center">Please select or create an expense batch.</p>)}
+        </CardContent>
+      </Card>
+
+      <ExpenseSplitterDialog
+        open={isSplitterDialogOpen}
+        onOpenChange={setIsSplitterDialogOpen}
+        initialExpenses={allExtractedExpensesForDialog}
+        batchId={selectedBatchId}
+        onExpensesSaved={handleExpensesSaved}
+        isConnectedToQuickBooks={false}
+      />
+    </>
   );
 };
 
