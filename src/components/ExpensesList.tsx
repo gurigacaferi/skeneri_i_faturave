@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Filter, Download, Settings, FileDown, Clock } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download, Settings, FileDown } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -34,7 +34,6 @@ import { exportExpensesToCsv, DEFAULT_EXPORT_COLUMNS } from '@/utils/exportToCsv
 import { useDebounce } from '@/hooks/useDebounce';
 import { Checkbox } from '@/components/ui/checkbox';
 import ExportSettingsModal from './ExportSettingsModal';
-import { useReceiptProcessing } from './ReceiptProcessingContext'; // Import the new hook
 
 interface Expense {
   id: string;
@@ -53,7 +52,7 @@ interface Expense {
   sasia: number | null;
   njesia: string | null;
   receipt_id: string | null;
-  processing_status: 'pending' | 'processing' | 'completed' | 'failed' | null; // ADDED STATUS
+  processing_status: 'pending' | 'processing' | 'completed' | 'failed' | null;
 }
 
 interface ExpensesListProps {
@@ -62,7 +61,6 @@ interface ExpensesListProps {
 
 const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const { supabase, session, profile, refreshProfile } = useSession();
-  const { pendingJobs } = useReceiptProcessing(); // Use the context
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -144,16 +142,6 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   useEffect(() => {
     fetchExpenses();
   }, [fetchExpenses, refreshTrigger]);
-
-  // Effect to refresh the list when a job completes
-  useEffect(() => {
-    const completedJob = pendingJobs.find(job => job.status === 'completed');
-    if (completedJob) {
-      // Trigger a full refresh to pull the newly created expense data
-      fetchExpenses();
-    }
-  }, [pendingJobs, fetchExpenses]);
-
 
   const handleClearFilters = () => {
     setDateRange({ from: undefined, to: undefined, label: "custom" });
@@ -583,9 +571,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             open={isEditDialogOpen}
             onOpenChange={setIsEditDialogOpen}
             expense={currentExpenseToEdit}
-            onExpenseUpdated={() => {
-              // No need to trigger refresh here, as the context handles job completion refresh
-            }}
+            onExpenseUpdated={fetchExpenses}
           />
         )}
       </Card>

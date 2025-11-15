@@ -1,5 +1,4 @@
 import { SessionContextProvider } from '@/components/SessionContextProvider';
-import { ReceiptProcessingProvider } from '@/components/ReceiptProcessingContext'; // Import the new provider
 import { Toaster } from '@/components/ui/toaster';
 import { Inter } from 'next/font/google';
 import './globals.css';
@@ -20,15 +19,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <SessionContextProvider>
-            <ReceiptProcessingProvider> {/* Wrap with the new provider */}
-              <div className="flex flex-col min-h-screen">
-                <Header />
-                <main className="flex-grow container mx-auto p-4 sm:p-6">
-                  {children}
-                </main>
-                <Footer />
-              </div>
-            </ReceiptProcessingProvider>
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              <main className="flex-grow container mx-auto p-4 sm:p-6">
+                {children}
+              </main>
+              <Footer />
+            </div>
           </SessionContextProvider>
           <Toaster />
         </ThemeProvider>
