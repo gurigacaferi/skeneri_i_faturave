@@ -1,3 +1,0 @@
-name = "trigger-receipt-processing"
-runtime = "deno"
-main = "index.ts"

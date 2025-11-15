@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Filter, Download, Settings } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download, Settings, FileDown } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -65,6 +65,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentExpenseToEdit, setCurrentExpenseToEdit] = useState<Expense | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   
   // State for selection
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
@@ -203,6 +204,70 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const handleEditClick = (expense: Expense) => {
     setCurrentExpenseToEdit(expense);
     setIsEditDialogOpen(true);
+  };
+
+  // Function to handle receipt download
+  const handleDownloadReceipt = async (expense: Expense) => {
+    if (!session || !expense.receipt_id) {
+      showError('No receipt image associated with this expense.');
+      return;
+    }
+
+    setDownloadingId(expense.id);
+    const toastId = showLoading('Preparing receipt for download...');
+
+    try {
+      // 1. Get the storage path and filename from the receipt table
+      const { data: receiptData, error: fetchError } = await supabase
+        .from('receipts')
+        .select('storage_path, filename')
+        .eq('id', expense.receipt_id)
+        .single();
+
+      if (fetchError || !receiptData?.storage_path) {
+        throw new Error('Could not find receipt file path.');
+      }
+
+      const storagePath = receiptData.storage_path;
+      const filename = receiptData.filename || `receipt_${expense.id}`;
+      const fileExtension = filename.split('.').pop() || 'jpg';
+
+      // 2. Get the signed URL
+      const { data: signedUrlData, error: signedError } = await supabase.storage
+        .from('receipts')
+        .createSignedUrl(storagePath, 60); // 60 seconds validity
+
+      if (signedError || !signedUrlData?.signedUrl) {
+        throw new Error('Failed to generate signed URL.');
+      }
+
+      // 3. Fetch the file content using the signed URL
+      const response = await fetch(signedUrlData.signedUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.statusText}`);
+      }
+
+      const blob = await response.blob();
+      
+      // 4. Trigger the download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${expense.merchant || 'receipt'}_${format(new Date(expense.date), 'yyyyMMdd')}.${fileExtension}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      showSuccess('Receipt download started.');
+
+    } catch (error: any) {
+      showError('Failed to download receipt: ' + error.message);
+      console.error('Download error:', error);
+    } finally {
+      dismissToast(toastId);
+      setDownloadingId(null);
+    }
   };
 
   // Get the user's preferred columns, or use the default list
@@ -427,6 +492,22 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                       <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center justify-center space-x-1">
+                          {expense.receipt_id && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-foreground/60 hover:text-green-500 hover:bg-accent"
+                              onClick={() => handleDownloadReceipt(expense)}
+                              disabled={downloadingId === expense.id}
+                              title="Download Receipt Image"
+                            >
+                              {downloadingId === expense.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
