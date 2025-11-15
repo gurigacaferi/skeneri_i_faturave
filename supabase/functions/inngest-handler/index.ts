@@ -1,8 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
-import { Inngest, InngestFunction } from 'https://esm.sh/inngest@3.19.2/deno';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
+import { Inngest } from 'https://esm.sh/inngest@3.19.2/deno';
 import { serve as serveInngest } from 'https://esm.sh/inngest@3.19.2/deno';
 import * as pdfjs from 'https://esm.sh/pdfjs-dist@4.4.168';
+import OpenAI from 'https://esm.sh/openai@4.52.0';
 
 const SYSTEM_PROMPT = `
 You are an expert accountant AI. Your task is to meticulously extract structured expense data from a multi-page receipt document provided as a series of images.
@@ -20,169 +21,161 @@ You MUST select one of the following detailed sub-categories for every single ex
   "665-01 Shpenzimet e qirase", "665-02 Material harxhues", "665-03 Pastrimi", "665-04 Ushqim dhe pije", "665-05 Shpenzime te IT-se", "665-06 Shpenzimt e perfaqesimit", "665-07 Asete nen 1000 euro", "665-09 Te tjera",
   "667-01 Sherbimet e kontabilitetit", "667-02 Sherbime ligjore", "667-03 Sherbime konsulente", "667-04 Sherbime auditimi",
   "668-01 Akomodimi", "668-02 Meditja", "668-03 Transporti",
-  "669-01 Shpenzimet e karburantit", "669-02 Mirembajtje e riparim",
-  "675-01 Interneti", "675-02 Telefon mobil", "675-03 Dergesa postare", "675-04 Telefon fiks",
-  "683-01 Sigurimi i automjeteve", "683-02 Sigurimi i nderteses",
-  "686-01 Energjia elektrike", "686-02 Ujesjellesi", "686-03 Pastrimi", "686-04 Shpenzimet e ngrohjes",
-  "690-01 Shpenzimet e anetaresimit", "690-02 Shpenzimet e perkthimit", "690-03 Provizion bankar", "690-04 Mirembajtje e webfaqes", "690-05 Taksa komunale", "690-06 Mirembajtje e llogarise bankare", "690-09 Te tjera"
+  "669-01 Shpenzimet e karburantit", "669-02 Mirembajtja e automjetit", "669-03 Sigurimi i automjetit",
+  "670-01 Interesi bankar", "670-02 Komisione bankare",
+  "671-01 Amortizimi i aseteve",
+  "672-01 Tatim fitimi", "672-02 Tatime lokale", "672-03 TVSH",
+  "673-01 Donacione",
+  "674-01 Gjoba dhe penalitete",
+  "675-01 Reklamimi dhe marketingu",
+  "676-01 Shpenzime postare", "676-02 Shpenzime telefonike", "676-03 Shpenzime interneti",
+  "677-01 Energjia elektrike", "677-02 Uji", "677-03 Ngrohja",
+  "678-01 Sigurimi i pasurise", "678-02 Sigurimi i pergjegjesise civile",
+  "679-01 Trajnime dhe kualifikime", "679-02 Literatura profesionale", "679-03 Kuotat e anetaresimit"
 ]
 
-**DATA EXTRACTION FIELDS (in Albanian):**
-You must extract the following fields for EACH line item:
-- name: A short, descriptive name for the item (e.g., "Kafe", "Laptop Dell XPS", "Furnizim zyre").
-- category: **MANDATORY.** Select one detailed sub-category from the list above. If the item does not fit any category, you MUST use "690-09 Te tjera". **ENSURE THIS FIELD IS PRESENT IN THE JSON OUTPUT.**
-- amount: The price of the individual line item, as a number, correctly handling decimals.
-- date: The date of the expense in YYYY-MM-DD format. This will likely be the same for all items on the receipt.
-- merchant: The name of the merchant or store. This will likely be the same for all items.
-- tvsh_percentage: The TVSH (VAT) percentage applied to the item, as a number (e.g., 20 for 20%). If not present, set to 0.
-- vat_code: The VAT code of the merchant (NUIS / NIPT). This will likely be the same for all items.
-- pageNumber: The page number (starting from 1) where this specific item was found.
-- nui: The unique identifier of the invoice (NUI). This will likely be the same for all items.
-- nr_fiskal: The fiscal number of the receipt. This will likely be the same for all items.
-- numri_i_tvsh_se: The VAT number of the receipt. This will likely be the same for all items.
-- description: A detailed description of the item, if available.
-- sasia: The quantity of the item. If not specified, default to 1.
-- njesia: The unit of the item (e.g., "cope", "kg"). If not specified, default to "cope".
-
-**OUTPUT FORMAT:**
-- Return a single JSON object with one key: "expenses".
-- The value of "expenses" must be an array of JSON objects, where each object represents one extracted line item.
-- If no valid expense data can be found across all images, return an empty "expenses" array.
+**JSON OUTPUT FORMAT:**
+Your final output MUST be a single, valid JSON object. Do not include any text, explanations, or markdown formatting before or after the JSON. The structure must be:
+{
+  "expenses": [
+    {
+      "description": "string",
+      "amount": number,
+      "category": "string (must be one from the list)",
+      "pageNumber": integer
+    }
+  ]
+}
 `;
-
-const inngest = new Inngest({
-  id: 'fatural-app',
-  signingKey: Deno.env.get('INNGEST_SIGNING_KEY'),
-});
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
-// Helper to convert file from URL to base64 images
-async function fileUrlToBase64Images(fileUrl: string, isPdf: boolean): Promise<string[]> {
-  const response = await fetch(fileUrl);
-  if (!response.ok) throw new Error(`Failed to fetch file: ${response.statusText}`);
-  const fileBuffer = await response.arrayBuffer();
+const openai = new OpenAI({
+  apiKey: Deno.env.get('OPENAI_API_KEY'),
+});
 
-  if (isPdf) {
-    const pdf = await pdfjs.getDocument(fileBuffer).promise;
-    const base64Images: string[] = [];
+async function fileToImages(supabase: SupabaseClient, storagePath: string) {
+  const { data, error } = await supabase.storage.from('receipts').download(storagePath);
+  if (error) throw new Error(`Failed to download from Supabase storage: ${error.message}`);
+
+  const buffer = await data.arrayBuffer();
+  const uint8Array = new Uint8Array(buffer);
+
+  if (data.type === 'application/pdf') {
+    const pdf = await pdfjs.getDocument(uint8Array).promise;
+    const images = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 2.0 });
-      
-      // Deno does not have a native canvas element. This part is tricky.
-      // For now, we assume a polyfill or a different approach might be needed in a real Deno environment.
-      // This code is illustrative of the logic but may fail in Deno without a canvas implementation.
-      // A more robust solution would use a server-side rendering library for canvas.
-      // Let's proceed with the logic, acknowledging this limitation.
-      // A common workaround is to call another function (e.g., a different Deno Deploy function with CanvasKit)
-      // or use a service for this conversion.
-      // For this implementation, we'll assume a simplified path where we can get a data URL.
+      const viewport = page.getViewport({ scale: 3 });
+      const canvas = new OffscreenCanvas(viewport.width, viewport.height);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not get canvas context');
+
+      await page.render({ canvasContext: context, viewport }).promise;
+      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      images.push(base64 as string);
     }
-    // This part is simplified due to Deno's lack of canvas.
-    // In a real-world scenario, you'd use a library or service for PDF-to-image conversion.
-    // We will return an empty array for PDF for now to avoid breaking the function.
-    console.warn("PDF processing in Deno is complex without a canvas. Skipping PDF page conversion.");
-    return [];
+    return images;
+  } else if (data.type.startsWith('image/')) {
+     const base64 = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+     return [base64];
   } else {
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
-    return [`data:${contentType};base64,${base64}`];
+    throw new Error(`Unsupported file type: ${data.type}`);
   }
 }
 
-const processReceipt = inngest.createFunction(
-  { id: 'process-receipt-job', name: 'Process Receipt Job' },
+const processReceipt = new Inngest({ id: 'fatural-app' }).createFunction(
+  { id: 'process-receipt-background-job', name: 'Process Receipt Background Job' },
   { event: 'receipt/processing.requested' },
-  async ({ event, step }) => {
+  async ({ event }) => {
     const { receiptId, storagePath, userId } = event.data;
 
     try {
-      const base64Images = await step.run('convert-file-to-images', async () => {
-        const { data: signedUrlData, error } = await supabaseAdmin.storage
-          .from('receipts')
-          .createSignedUrl(storagePath, 3600); // 1 hour expiry
+      const images = await fileToImages(supabaseAdmin, storagePath);
 
-        if (error) throw new Error(`Failed to create signed URL: ${error.message}`);
-        
-        const isPdf = storagePath.toLowerCase().endsWith('.pdf');
-        return await fileUrlToBase64Images(signedUrlData.signedUrl, isPdf);
+      const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Extract all expense line items from the following document images:' },
+            ...images.map((base64, i) => ({
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${base64}`,
+                detail: 'high',
+              },
+            })),
+          ],
+        },
+      ];
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: messages,
+        response_format: { type: 'json_object' },
+        max_tokens: 4096,
+        temperature: 0,
+        user: userId,
       });
 
-      if (base64Images.length === 0) {
-        throw new Error("File could not be converted to images for processing.");
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error('OpenAI returned an empty response.');
       }
 
-      const extractedData = await step.run('extract-expense-data-from-ai', async () => {
-        const apiKey = Deno.env.get('OPENAI_API_KEY');
-        if (!apiKey) throw new Error('OPENAI_API_KEY is not set.');
+      const { expenses } = JSON.parse(content);
 
-        const userMessageContent = [{ type: 'text', text: 'Extract expense data.' },
-          ...base64Images.map(url => ({ type: 'image_url', image_url: { url, detail: 'high' } }))
-        ];
+      if (!Array.isArray(expenses)) {
+        throw new Error('Invalid JSON structure from OpenAI. "expenses" is not an array.');
+      }
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user', content: userMessageContent },
-            ],
-            response_format: { type: 'json_object' },
-          }),
-        });
+      const expensesToInsert = expenses.map(expense => ({
+        receipt_id: receiptId,
+        user_id: userId,
+        description: expense.description,
+        amount: expense.amount,
+        category: expense.category,
+        page_number: expense.pageNumber,
+      }));
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(`OpenAI API Error: ${errorData.error?.message}`);
-        }
-        const data = await response.json();
-        return JSON.parse(data.choices[0].message.content);
-      });
+      const { error: insertError } = await supabaseAdmin
+        .from('expenses')
+        .insert(expensesToInsert);
 
-      await step.run('save-extracted-expenses', async () => {
-        if (!extractedData.expenses || extractedData.expenses.length === 0) {
-          return { message: "No expenses found to save." };
-        }
-        const expensesToInsert = extractedData.expenses.map((exp: any) => ({
-          ...exp,
-          receipt_id: receiptId,
-          user_id: userId,
-          batch_id: (await supabaseAdmin.from('receipts').select('batch_id').eq('id', receiptId).single()).data?.batch_id,
-        }));
+      if (insertError) {
+        throw new Error(`Failed to insert expenses into database: ${insertError.message}`);
+      }
 
-        const { error } = await supabaseAdmin.from('expenses').insert(expensesToInsert);
-        if (error) throw new Error(`Failed to save expenses: ${error.message}`);
-      });
+      await supabaseAdmin
+        .from('receipts')
+        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .eq('id', receiptId);
 
-      await step.run('update-receipt-status-to-completed', async () => {
-        const { error } = await supabaseAdmin
-          .from('receipts')
-          .update({ status: 'completed' })
-          .eq('id', receiptId);
-        if (error) throw new Error(`Failed to update receipt status: ${error.message}`);
-      });
-
-      return { success: true, message: `Receipt ${receiptId} processed successfully.` };
+      return { success: true, message: `Processed ${expenses.length} expenses.` };
 
     } catch (error) {
-      await step.run('update-receipt-status-to-failed', async () => {
-        await supabaseAdmin
-          .from('receipts')
-          .update({ status: 'failed', error_message: error.message })
-          .eq('id', receiptId);
-      });
-      throw error;
+      console.error('Error processing receipt:', error);
+      await supabaseAdmin
+        .from('receipts')
+        .update({ status: 'failed', error_message: error.message })
+        .eq('id', receiptId);
+      
+      return { success: false, message: error.message };
     }
   }
 );
 
-serve({
-  client: inngest,
+serve(serveInngest({
+  client: new Inngest({ id: 'fatural-app' }),
   functions: [processReceipt],
-});
+}));
