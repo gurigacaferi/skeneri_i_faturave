@@ -1,3 +1,5 @@
+'use client';
+
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useSession } from '@/components/SessionContextProvider';
 import { showSuccess, showError } from '@/utils/toast';
@@ -139,7 +141,7 @@ export const ReceiptProcessingProvider: React.FC<{ children: ReactNode }> = ({ c
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, session, addJob, updateJobStatus, clearJob]); // Dependencies ensure the effect runs only when necessary
+  }, [supabase, session, addJob, updateJobStatus, clearJob, pendingJobs]);
 
   const value = {
     pendingJobs,
