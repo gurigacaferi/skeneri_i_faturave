@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
-import { Loader2, Trash2, Pencil, Filter, Download, Settings, FileDown } from 'lucide-react';
+import { Loader2, Trash2, Pencil, Filter, Download, Settings, FileDown, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   AlertDialog,
@@ -32,6 +32,7 @@ import { exportExpensesToCsv, DEFAULT_EXPORT_COLUMNS } from '@/utils/exportToCsv
 import { useDebounce } from '@/hooks/useDebounce';
 import { Checkbox } from '@/components/ui/checkbox';
 import ExportSettingsModal from './ExportSettingsModal';
+import { useReceiptProcessing } from './ReceiptProcessingContext'; // Import the new hook
 
 interface Expense {
   id: string;
@@ -47,9 +48,10 @@ interface Expense {
   nr_fiskal: string | null;
   numri_i_tvsh_se: string | null;
   description: string | null;
-  sasia: number | null; // NEW FIELD
-  njesia: string | null; // NEW FIELD
-  receipt_id: string | null; // ADDED FIELD
+  sasia: number | null;
+  njesia: string | null;
+  receipt_id: string | null;
+  processing_status: 'pending' | 'processing' | 'completed' | 'failed' | null; // ADDED STATUS
 }
 
 interface ExpensesListProps {
@@ -58,6 +60,7 @@ interface ExpensesListProps {
 
 const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const { supabase, session, profile, refreshProfile } = useSession();
+  const { pendingJobs } = useReceiptProcessing(); // Use the context
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -86,50 +89,46 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
   // Determine which columns to fetch from the database
-  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia, receipt_id';
+  const selectColumns = 'id, name, category, amount, date, merchant, tvsh_percentage, vat_code, created_at, nui, nr_fiskal, numri_i_tvsh_se, description, sasia, njesia, receipt_id, processing_status';
 
   // Effect for fetching data, now depends on debounced values
-  useEffect(() => {
-    const fetchExpenses = async () => {
-      if (!session) return;
+  const fetchExpenses = useCallback(async () => {
+    if (!session) return;
 
-      setLoading(true);
-      let query = supabase
-        .from('expenses')
-        .select(selectColumns)
-        .eq('user_id', session.user.id);
+    setLoading(true);
+    let query = supabase
+      .from('expenses')
+      .select(selectColumns)
+      .eq('user_id', session.user.id);
 
-      // Apply filters using debounced values
-      if (dateRange.from) {
-        query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
-      }
-      if (dateRange.to) {
-        query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
-      }
-      if (debouncedMinAmount) {
-        query = query.gte('amount', parseFloat(debouncedMinAmount));
-      }
-      if (debouncedMaxAmount) {
-        query = query.lte('amount', parseFloat(debouncedMaxAmount));
-      }
-      if (debouncedSearchTerm) {
-        const searchLower = `%${debouncedSearchTerm.toLowerCase()}%`;
-        query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
-      }
+    // Apply filters using debounced values
+    if (dateRange.from) {
+      query = query.gte('date', format(dateRange.from, 'yyyy-MM-dd'));
+    }
+    if (dateRange.to) {
+      query = query.lte('date', format(dateRange.to, 'yyyy-MM-dd'));
+    }
+    if (debouncedMinAmount) {
+      query = query.gte('amount', parseFloat(debouncedMinAmount));
+    }
+    if (debouncedMaxAmount) {
+      query = query.lte('amount', parseFloat(debouncedMaxAmount));
+    }
+    if (debouncedSearchTerm) {
+      const searchLower = `%${debouncedSearchTerm.toLowerCase()}%`;
+      query = query.or(`name.ilike.${searchLower},merchant.ilike.${searchLower},category.ilike.${searchLower}`);
+    }
 
-      const { data, error } = await query.order('date', { ascending: false });
+    const { data, error } = await query.order('date', { ascending: false });
 
-      if (error) {
-        showError('Failed to fetch expenses: ' + error.message);
-      } else {
-        setExpenses(data || []);
-        // Clear selection when data refreshes
-        setSelectedExpenseIds(new Set());
-      }
-      setLoading(false);
-    };
-
-    fetchExpenses();
+    if (error) {
+      showError('Failed to fetch expenses: ' + error.message);
+    } else {
+      setExpenses(data || []);
+      // Clear selection when data refreshes
+      setSelectedExpenseIds(new Set());
+    }
+    setLoading(false);
   }, [
     session,
     supabase,
@@ -137,8 +136,22 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
     debouncedMinAmount,
     debouncedMaxAmount,
     debouncedSearchTerm,
-    refreshTrigger,
+    selectColumns
   ]);
+
+  useEffect(() => {
+    fetchExpenses();
+  }, [fetchExpenses, refreshTrigger]);
+
+  // Effect to refresh the list when a job completes
+  useEffect(() => {
+    const completedJob = pendingJobs.find(job => job.status === 'completed');
+    if (completedJob) {
+      // Trigger a full refresh to pull the newly created expense data
+      fetchExpenses();
+    }
+  }, [pendingJobs, fetchExpenses]);
+
 
   const handleClearFilters = () => {
     setDateRange({ from: undefined, to: undefined, label: "custom" });
@@ -465,8 +478,8 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                     <TableHead className="py-3 px-4">Merchant</TableHead>
                     <TableHead className="py-3 px-4">Item</TableHead>
                     <TableHead className="py-3 px-4">Category</TableHead>
-                    <TableHead className="py-3 px-4">Sasia</TableHead> {/* NEW HEADER */}
-                    <TableHead className="py-3 px-4">Njesia</TableHead> {/* NEW HEADER */}
+                    <TableHead className="py-3 px-4">Sasia</TableHead>
+                    <TableHead className="py-3 px-4">Njesia</TableHead>
                     <TableHead className="text-right py-3 px-4">Amount</TableHead>
                     <TableHead className="text-right py-3 px-4">VAT Code</TableHead>
                     <TableHead className="text-center py-3 px-4">Actions</TableHead>
@@ -486,65 +499,74 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
                       <TableCell className="py-3 px-4">{expense.merchant || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4 font-medium">{expense.name}</TableCell>
                       <TableCell className="py-3 px-4 text-foreground/80">{expense.category}</TableCell>
-                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell> {/* NEW CELL */}
-                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell> {/* NEW CELL */}
+                      <TableCell className="py-3 px-4">{expense.sasia || 'N/A'}</TableCell>
+                      <TableCell className="py-3 px-4">{expense.njesia || 'N/A'}</TableCell>
                       <TableCell className="text-right py-3 px-4">${expense.amount.toFixed(2)}</TableCell>
                       <TableCell className="text-right py-3 px-4 text-foreground/80">{expense.vat_code || 'N/A'}</TableCell>
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center justify-center space-x-1">
-                          {expense.receipt_id && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-foreground/60 hover:text-green-500 hover:bg-accent"
-                              onClick={() => handleDownloadReceipt(expense)}
-                              disabled={downloadingId === expense.id}
-                              title="Download Receipt Image"
-                            >
-                              {downloadingId === expense.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <FileDown className="h-4 w-4" />
-                              )}
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-foreground/60 hover:text-primary hover:bg-accent"
-                            onClick={() => handleEditClick(expense)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete the expense "{expense.name}".
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteExpense(expense.id)}
-                                  disabled={deletingId === expense.id}
-                                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                          {expense.processing_status === 'pending' || expense.processing_status === 'processing' ? (
+                            <div className="flex items-center text-primary/80" title="Processing in background">
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                              <span className="text-xs">Proc...</span>
+                            </div>
+                          ) : (
+                            <>
+                              {expense.receipt_id && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-foreground/60 hover:text-green-500 hover:bg-accent"
+                                  onClick={() => handleDownloadReceipt(expense)}
+                                  disabled={downloadingId === expense.id}
+                                  title="Download Receipt Image"
                                 >
-                                  {deletingId === expense.id ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  {downloadingId === expense.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
-                                    'Delete'
+                                    <FileDown className="h-4 w-4" />
                                   )}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-foreground/60 hover:text-primary hover:bg-accent"
+                                onClick={() => handleEditClick(expense)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-destructive hover:bg-accent">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete the expense "{expense.name}".
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteExpense(expense.id)}
+                                      disabled={deletingId === expense.id}
+                                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                    >
+                                      {deletingId === expense.id ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      ) : (
+                                        'Delete'
+                                      )}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -560,8 +582,7 @@ const ExpensesList: React.FC<ExpensesListProps> = ({ refreshTrigger }) => {
             onOpenChange={setIsEditDialogOpen}
             expense={currentExpenseToEdit}
             onExpenseUpdated={() => {
-              // Trigger a refresh by incrementing the trigger state if needed, 
-              // but for now, we rely on the component re-rendering after dialog closes.
+              // No need to trigger refresh here, as the context handles job completion refresh
             }}
           />
         )}
