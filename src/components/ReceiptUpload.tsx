@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,8 @@ import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTri
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
+import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
+import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -68,18 +69,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
   const filesToProcess = files.filter(f => f.status === 'pending');
 
-  // Page Visibility API - processing continues in background
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isUploading) {
-        console.log('Tab backgrounded - processing continues in background');
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isUploading]);
-
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
     setFiles(prevFiles =>
       prevFiles.map(file =>
@@ -122,37 +111,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     return <FileIcon className="h-5 w-5 text-gray-500" />;
   };
 
-  // Poll for receipt status updates
-  const pollReceiptStatus = async (receiptId: string, fileId: string, maxAttempts = 60): Promise<any> => {
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const { data: receipt, error } = await supabase
-        .from('receipts')
-        .select('status, processed_data')
-        .eq('id', receiptId)
-        .single();
-
-      if (error) {
-        console.error('Error polling receipt status:', error);
-        throw error;
-      }
-
-      if (receipt.status === 'processed') {
-        return receipt.processed_data;
-      } else if (receipt.status === 'failed') {
-        throw new Error('Receipt processing failed');
-      }
-
-      // Update progress to show we're still processing
-      const progressPercent = Math.min(50 + (attempt * 0.8), 95);
-      updateFileState(fileId, { progress: progressPercent });
-
-      // Wait 2 seconds before next poll
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    throw new Error('Processing timeout - receipt is taking too long to process');
-  };
-
   const handleFileUpload = async () => {
     if (filesToProcess.length === 0) { showError('No files selected or pending processing.'); return; }
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
@@ -168,6 +126,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let storagePath: string | undefined;
       
       try {
+        const base64Images = await fileToBase64Images(file);
         updateFileState(file.id, { progress: 20 });
 
         const fileExtension = file.name.split('.').pop();
@@ -176,7 +135,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           .from('receipts')
           .upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
-        updateFileState(file.id, { progress: 30, storagePath });
+        updateFileState(file.id, { progress: 40, storagePath });
 
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
@@ -191,24 +150,19 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           .single();
         if (receiptInsertError) throw new Error(`DB insert failed: ${receiptInsertError.message}`);
         receiptId = receiptData.id;
-        updateFileState(file.id, { progress: 40, receiptId, status: 'processing' });
+        updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        // Trigger async processing - this returns immediately
-        const { error: triggerError } = await supabase.functions.invoke('trigger-receipt-processing', {
-          body: { receiptId },
+        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
+          body: { base64Images, receiptId },
         });
+        updateFileState(file.id, { progress: 90 });
 
-        if (triggerError) throw new Error(`Failed to trigger processing: ${triggerError.message}`);
-        
-        updateFileState(file.id, { progress: 50 });
-
-        // Poll for completion - this will continue even if tab is backgrounded
-        const processedData = await pollReceiptStatus(receiptId, file.id);
-        
-        if (processedData?.expenses) {
-          processedData.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
+        if (data.expenses) {
+          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
         
+        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
         updateFileState(file.id, { progress: 100, status: 'processed' });
 
       } catch (error: any) {
@@ -271,7 +225,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 <div className="space-y-2">
                   <Progress value={totalProgress} className="h-2" />
                   <p className="text-sm text-muted-foreground text-center">Overall Progress: {Math.round(totalProgress)}%</p>
-                  <p className="text-xs text-muted-foreground text-center">✓ Processing continues in background - feel free to switch tabs</p>
                 </div>
               )}
 
