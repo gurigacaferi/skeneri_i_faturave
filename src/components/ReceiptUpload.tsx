@@ -12,7 +12,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
 import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
 import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
-import { supabase } from '@/integrations/supabase/client';
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -171,16 +170,20 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       } catch (error: any) {
         hasError = true;
         const errorMessage = error.message || 'Unknown error during processing.';
-        // Only update file state if it wasn't already updated by polling
-        const currentFile = files.find(f => f.id === file.id);
-        if (currentFile?.status !== 'failed') {
-          updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
-        }
+        console.error('Processing error:', error);
+        
+        // Update file state to failed (polling function might have already done this)
+        updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
+        
         if (receiptId) {
-          await supabase.from('receipts').update({ 
-            status: 'failed', 
-            error_message: errorMessage 
-          }).eq('id', receiptId);
+          try {
+            await supabase.from('receipts').update({ 
+              status: 'failed', 
+              error_message: errorMessage 
+            }).eq('id', receiptId);
+          } catch (dbError) {
+            console.error('Failed to update receipt status in DB:', dbError);
+          }
         }
       }
     }
@@ -202,9 +205,10 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const pollReceiptStatus = async (receiptId: string, fileId: string): Promise<any> => {
     const maxAttempts = 60; // 2 minutes max
     let attempts = 0;
+    let intervalId: NodeJS.Timeout | null = null;
     
     return new Promise((resolve, reject) => {
-      const poll = async () => {
+      const checkStatus = async () => {
         try {
           attempts++;
           
@@ -216,6 +220,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             .single();
             
           if (error) {
+            if (intervalId) clearInterval(intervalId);
             updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: error.message });
             reject(new Error(error.message));
             return;
@@ -223,39 +228,76 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
           
           if (receipt.status === 'processed' && receipt.processed_data) {
             // Success - parse the processed data
+            if (intervalId) clearInterval(intervalId);
             const parsedData = JSON.parse(receipt.processed_data);
             updateFileState(fileId, { progress: 100, status: 'processed' });
             resolve({ expenses: parsedData.expenses });
             return;
           } else if (receipt.status === 'failed') {
             // Failed processing
+            if (intervalId) clearInterval(intervalId);
             const errorMsg = receipt.error_message || 'Processing failed';
             updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: errorMsg });
             reject(new Error(errorMsg));
             return;
           } else if (attempts >= maxAttempts) {
             // Timeout
+            if (intervalId) clearInterval(intervalId);
             const timeoutMsg = 'Processing timeout - please try again';
             updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: timeoutMsg });
             reject(new Error(timeoutMsg));
             return;
           }
           
-          // Still processing - continue polling
+          // Still processing - update progress
           const progress = Math.min(60 + (attempts * 30 / maxAttempts), 95);
           updateFileState(fileId, { progress });
           
-          // Poll again in 2 seconds
-          setTimeout(poll, 2000);
-          
         } catch (pollError: any) {
+          if (intervalId) clearInterval(intervalId);
           updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: pollError.message });
           reject(pollError);
         }
       };
       
-      // Start polling
-      poll();
+      // Start immediate check
+      checkStatus();
+      
+      // Set up polling every 2 seconds
+      intervalId = setInterval(checkStatus, 2000);
+      
+      // Handle visibility change to resume polling when tab becomes visible again
+      const handleVisibilityChange = () => {
+        if (!document.hidden && !intervalId) {
+          // Tab became visible again and we don't have an active interval
+          intervalId = setInterval(checkStatus, 2000);
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      // Cleanup function
+      const cleanup = () => {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+      
+      // Override resolve/reject to include cleanup
+      const originalResolve = resolve;
+      const originalReject = reject;
+      
+      resolve = (value: any) => {
+        cleanup();
+        originalResolve(value);
+      };
+      
+      reject = (reason: any) => {
+        cleanup();
+        originalReject(reason);
+      };
     });
   };
 
