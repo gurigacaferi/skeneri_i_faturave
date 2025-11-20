@@ -116,7 +116,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
     setIsUploading(true);
-    const toastId = showLoading(`Processing ${filesToProcess.length} receipt(s)... You can now switch tabs safely!`);
+    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
     const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
     let hasError = false;
 
@@ -126,7 +126,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let storagePath: string | undefined;
       
       try {
-        // Upload to storage first
+        const base64Images = await fileToBase64Images(file);
         updateFileState(file.id, { progress: 20 });
 
         const fileExtension = file.name.split('.').pop();
@@ -137,7 +137,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
         updateFileState(file.id, { progress: 40, storagePath });
 
-        // Create receipt record
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -153,37 +152,25 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        // Call the async processing function directly (it handles everything internally)
-        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt-async', {
-          body: { receiptId },
+        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
+          body: { base64Images, receiptId },
         });
         updateFileState(file.id, { progress: 90 });
 
         if (edgeFunctionError) throw new Error(edgeFunctionError.message);
-        
-        if (data && data.data && data.data.expenses) {
-          data.data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        if (data.expenses) {
+          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
         
+        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
         updateFileState(file.id, { progress: 100, status: 'processed' });
 
       } catch (error: any) {
         hasError = true;
         const errorMessage = error.message || 'Unknown error during processing.';
-        console.error('Processing error:', error);
-        
-        // Update file state to failed (polling function might have already done this)
         updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
-        
         if (receiptId) {
-          try {
-            await supabase.from('receipts').update({ 
-              status: 'failed', 
-              error_message: errorMessage 
-            }).eq('id', receiptId);
-          } catch (dbError) {
-            console.error('Failed to update receipt status in DB:', dbError);
-          }
+            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
         }
       }
     }
@@ -238,7 +225,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 <div className="space-y-2">
                   <Progress value={totalProgress} className="h-2" />
                   <p className="text-sm text-muted-foreground text-center">Overall Progress: {Math.round(totalProgress)}%</p>
-                  <p className="text-xs text-green-600 text-center">✓ Processing runs on server - safe to switch tabs!</p>
                 </div>
               )}
 
