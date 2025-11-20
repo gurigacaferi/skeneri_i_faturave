@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
 import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
 import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
+import { supabase } from '@/integrations/supabase/client';
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -116,7 +117,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
     setIsUploading(true);
-    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
+    const toastId = showLoading(`Processing ${filesToProcess.length} receipt(s)... You can now switch tabs safely!`);
     const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
     let hasError = false;
 
@@ -126,7 +127,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let storagePath: string | undefined;
       
       try {
-        const base64Images = await fileToBase64Images(file);
+        // Upload to storage first
         updateFileState(file.id, { progress: 20 });
 
         const fileExtension = file.name.split('.').pop();
@@ -137,6 +138,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
         updateFileState(file.id, { progress: 40, storagePath });
 
+        // Create receipt record
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -152,25 +154,33 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Images, receiptId },
+        // Trigger async processing
+        const { error: edgeFunctionError } = await supabase.functions.invoke('trigger-receipt-processing', {
+          body: { receiptId },
         });
-        updateFileState(file.id, { progress: 90 });
+        updateFileState(file.id, { progress: 60 });
 
         if (edgeFunctionError) throw new Error(edgeFunctionError.message);
-        if (data.expenses) {
-          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
-        }
         
-        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
-        updateFileState(file.id, { progress: 100, status: 'processed' });
+        // Start polling for completion
+        const result = await pollReceiptStatus(receiptId, file.id);
+        if (result && result.expenses) {
+          result.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        }
 
       } catch (error: any) {
         hasError = true;
         const errorMessage = error.message || 'Unknown error during processing.';
-        updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
+        // Only update file state if it wasn't already updated by polling
+        const currentFile = files.find(f => f.id === file.id);
+        if (currentFile?.status !== 'failed') {
+          updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
+        }
         if (receiptId) {
-            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
+          await supabase.from('receipts').update({ 
+            status: 'failed', 
+            error_message: errorMessage 
+          }).eq('id', receiptId);
         }
       }
     }
@@ -187,6 +197,66 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     }
     
     onReceiptProcessed();
+  };
+
+  const pollReceiptStatus = async (receiptId: string, fileId: string): Promise<any> => {
+    const maxAttempts = 60; // 2 minutes max
+    let attempts = 0;
+    
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        try {
+          attempts++;
+          
+          // Get receipt status from database
+          const { data: receipt, error } = await supabase
+            .from('receipts')
+            .select('status, processed_data, error_message')
+            .eq('id', receiptId)
+            .single();
+            
+          if (error) {
+            updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: error.message });
+            reject(new Error(error.message));
+            return;
+          }
+          
+          if (receipt.status === 'processed' && receipt.processed_data) {
+            // Success - parse the processed data
+            const parsedData = JSON.parse(receipt.processed_data);
+            updateFileState(fileId, { progress: 100, status: 'processed' });
+            resolve({ expenses: parsedData.expenses });
+            return;
+          } else if (receipt.status === 'failed') {
+            // Failed processing
+            const errorMsg = receipt.error_message || 'Processing failed';
+            updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: errorMsg });
+            reject(new Error(errorMsg));
+            return;
+          } else if (attempts >= maxAttempts) {
+            // Timeout
+            const timeoutMsg = 'Processing timeout - please try again';
+            updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: timeoutMsg });
+            reject(new Error(timeoutMsg));
+            return;
+          }
+          
+          // Still processing - continue polling
+          const progress = Math.min(60 + (attempts * 30 / maxAttempts), 95);
+          updateFileState(fileId, { progress });
+          
+          // Poll again in 2 seconds
+          setTimeout(poll, 2000);
+          
+        } catch (pollError: any) {
+          updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: pollError.message });
+          reject(pollError);
+        }
+      };
+      
+      // Start polling
+      poll();
+    });
   };
 
   const handleExpensesSaved = () => {
@@ -225,6 +295,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
                 <div className="space-y-2">
                   <Progress value={totalProgress} className="h-2" />
                   <p className="text-sm text-muted-foreground text-center">Overall Progress: {Math.round(totalProgress)}%</p>
+                  <p className="text-xs text-green-600 text-center">✓ Processing runs on server - safe to switch tabs!</p>
                 </div>
               )}
 
