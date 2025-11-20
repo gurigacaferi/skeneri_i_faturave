@@ -153,19 +153,19 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        // Trigger async processing
-        const { error: edgeFunctionError } = await supabase.functions.invoke('trigger-receipt-processing', {
+        // Call the async processing function directly (it handles everything internally)
+        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt-async', {
           body: { receiptId },
         });
-        updateFileState(file.id, { progress: 60 });
+        updateFileState(file.id, { progress: 90 });
 
         if (edgeFunctionError) throw new Error(edgeFunctionError.message);
         
-        // Start polling for completion
-        const result = await pollReceiptStatus(receiptId, file.id);
-        if (result && result.expenses) {
-          result.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        if (data && data.data && data.data.expenses) {
+          data.data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
+        
+        updateFileState(file.id, { progress: 100, status: 'processed' });
 
       } catch (error: any) {
         hasError = true;
@@ -200,105 +200,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     }
     
     onReceiptProcessed();
-  };
-
-  const pollReceiptStatus = async (receiptId: string, fileId: string): Promise<any> => {
-    const maxAttempts = 60; // 2 minutes max
-    let attempts = 0;
-    let intervalId: NodeJS.Timeout | null = null;
-    
-    return new Promise((resolve, reject) => {
-      const checkStatus = async () => {
-        try {
-          attempts++;
-          
-          // Get receipt status from database
-          const { data: receipt, error } = await supabase
-            .from('receipts')
-            .select('status, processed_data, error_message')
-            .eq('id', receiptId)
-            .single();
-            
-          if (error) {
-            if (intervalId) clearInterval(intervalId);
-            updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: error.message });
-            reject(new Error(error.message));
-            return;
-          }
-          
-          if (receipt.status === 'processed' && receipt.processed_data) {
-            // Success - parse the processed data
-            if (intervalId) clearInterval(intervalId);
-            const parsedData = JSON.parse(receipt.processed_data);
-            updateFileState(fileId, { progress: 100, status: 'processed' });
-            resolve({ expenses: parsedData.expenses });
-            return;
-          } else if (receipt.status === 'failed') {
-            // Failed processing
-            if (intervalId) clearInterval(intervalId);
-            const errorMsg = receipt.error_message || 'Processing failed';
-            updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: errorMsg });
-            reject(new Error(errorMsg));
-            return;
-          } else if (attempts >= maxAttempts) {
-            // Timeout
-            if (intervalId) clearInterval(intervalId);
-            const timeoutMsg = 'Processing timeout - please try again';
-            updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: timeoutMsg });
-            reject(new Error(timeoutMsg));
-            return;
-          }
-          
-          // Still processing - update progress
-          const progress = Math.min(60 + (attempts * 30 / maxAttempts), 95);
-          updateFileState(fileId, { progress });
-          
-        } catch (pollError: any) {
-          if (intervalId) clearInterval(intervalId);
-          updateFileState(fileId, { status: 'failed', progress: 100, errorMessage: pollError.message });
-          reject(pollError);
-        }
-      };
-      
-      // Start immediate check
-      checkStatus();
-      
-      // Set up polling every 2 seconds
-      intervalId = setInterval(checkStatus, 2000);
-      
-      // Handle visibility change to resume polling when tab becomes visible again
-      const handleVisibilityChange = () => {
-        if (!document.hidden && !intervalId) {
-          // Tab became visible again and we don't have an active interval
-          intervalId = setInterval(checkStatus, 2000);
-        }
-      };
-      
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      
-      // Cleanup function
-      const cleanup = () => {
-        if (intervalId) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      };
-      
-      // Override resolve/reject to include cleanup
-      const originalResolve = resolve;
-      const originalReject = reject;
-      
-      resolve = (value: any) => {
-        cleanup();
-        originalResolve(value);
-      };
-      
-      reject = (reason: any) => {
-        cleanup();
-        originalReject(reason);
-      };
-    });
   };
 
   const handleExpensesSaved = () => {
