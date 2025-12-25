@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,8 @@ import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTri
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
+import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
+import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -64,14 +65,10 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>([]);
-  
-  // Track which receipts are being watched
-  const watchingReceiptsRef = useRef<Set<string>>(new Set());
 
   const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
   const filesToProcess = files.filter(f => f.status === 'pending');
 
-  // Define updateFileState before using it in effects
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
     setFiles(prevFiles =>
       prevFiles.map(file =>
@@ -79,161 +76,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       )
     );
   }, []);
-
-  // Set up realtime subscription for receipt status changes
-  useEffect(() => {
-    if (!supabase || !session) return;
-
-    const channel = supabase
-      .channel('receipt-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'receipts',
-          filter: `user_id=eq.${session.user.id}`,
-        },
-        async (payload) => {
-          const updatedReceipt = payload.new as any;
-          console.log('[Realtime] Receipt updated:', updatedReceipt.id, updatedReceipt.status);
-
-          // Find the file with this receiptId
-          const fileToUpdate = files.find(f => f.receiptId === updatedReceipt.id);
-          if (!fileToUpdate) return;
-
-          if (updatedReceipt.status === 'processed') {
-            // Fetch expenses for this receipt
-            const { data: expenses } = await supabase
-              .from('expenses')
-              .select('*')
-              .eq('receipt_id', updatedReceipt.id);
-
-            if (expenses && expenses.length > 0) {
-              expenses.forEach((exp: any) => {
-                setAllExtractedExpensesForDialog(prev => [
-                  ...(prev || []),
-                  { receiptId: updatedReceipt.id, expense: exp }
-                ]);
-              });
-            }
-
-            updateFileState(fileToUpdate.id, { 
-              status: 'processed', 
-              progress: 100 
-            });
-
-            watchingReceiptsRef.current.delete(updatedReceipt.id);
-          } else if (updatedReceipt.status === 'failed') {
-            updateFileState(fileToUpdate.id, { 
-              status: 'failed', 
-              progress: 100, 
-              errorMessage: updatedReceipt.error_message || 'Processing failed' 
-            });
-
-            watchingReceiptsRef.current.delete(updatedReceipt.id);
-          } else if (updatedReceipt.status === 'processing') {
-            updateFileState(fileToUpdate.id, { 
-              status: 'processing',
-              progress: 70 
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, session, files, updateFileState]);
-
-  // Fallback polling mechanism in case Realtime doesn't work
-  useEffect(() => {
-    if (watchingReceiptsRef.current.size === 0 || !supabase) return;
-
-    const pollInterval = setInterval(async () => {
-      const receiptIds = Array.from(watchingReceiptsRef.current);
-      if (receiptIds.length === 0) return;
-
-      console.log('[Fallback Poll] Checking status for', receiptIds.length, 'receipts');
-
-      // Fetch all watched receipts
-      const { data: receipts, error } = await supabase
-        .from('receipts')
-        .select('id, status, error_message')
-        .in('id', receiptIds);
-
-      if (error || !receipts) {
-        console.error('[Fallback Poll] Error:', error);
-        return;
-      }
-
-      // Process each receipt
-      for (const receipt of receipts) {
-        const fileToUpdate = files.find(f => f.receiptId === receipt.id);
-        if (!fileToUpdate) continue;
-
-        if (receipt.status === 'processed') {
-          // Fetch expenses
-          const { data: expenses } = await supabase
-            .from('expenses')
-            .select('*')
-            .eq('receipt_id', receipt.id);
-
-          if (expenses && expenses.length > 0) {
-            expenses.forEach((exp: any) => {
-              setAllExtractedExpensesForDialog(prev => [
-                ...(prev || []),
-                { receiptId: receipt.id, expense: exp }
-              ]);
-            });
-          }
-
-          updateFileState(fileToUpdate.id, { 
-            status: 'processed', 
-            progress: 100 
-          });
-
-          watchingReceiptsRef.current.delete(receipt.id);
-          console.log('[Fallback Poll] Receipt processed:', receipt.id);
-        } else if (receipt.status === 'failed') {
-          updateFileState(fileToUpdate.id, { 
-            status: 'failed', 
-            progress: 100, 
-            errorMessage: receipt.error_message || 'Processing failed' 
-          });
-
-          watchingReceiptsRef.current.delete(receipt.id);
-          console.log('[Fallback Poll] Receipt failed:', receipt.id);
-        } else if (receipt.status === 'processing') {
-          updateFileState(fileToUpdate.id, { 
-            status: 'processing',
-            progress: 70 
-          });
-        }
-      }
-    }, 5000); // Poll every 5 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [supabase, files, updateFileState]);
-
-  // Check if all watched receipts are complete and show splitter dialog
-  useEffect(() => {
-    if (watchingReceiptsRef.current.size === 0 && files.some(f => f.status === 'processed')) {
-      // All receipts done, check if we have expenses
-      if (allExtractedExpensesForDialog && allExtractedExpensesForDialog.length > 0) {
-        setIsSplitterDialogOpen(true);
-        onReceiptProcessed();
-      } else {
-        // No expenses extracted
-        const hasProcessedFiles = files.some(f => f.status === 'processed');
-        if (hasProcessedFiles) {
-          showError('AI could not extract any expenses from the uploaded files.');
-          onReceiptProcessed();
-        }
-      }
-    }
-  }, [files, allExtractedExpensesForDialog, onReceiptProcessed]);
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
     const newAcceptedFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { 
@@ -269,15 +111,14 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     return <FileIcon className="h-5 w-5 text-gray-500" />;
   };
 
-
-
   const handleFileUpload = async () => {
     if (filesToProcess.length === 0) { showError('No files selected or pending processing.'); return; }
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
     setIsUploading(true);
-    const toastId = showLoading(`Uploading ${filesToProcess.length} receipt(s)...`);
-    const queuedReceipts: string[] = [];
+    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
+    const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
+    let hasError = false;
 
     for (const file of filesToProcess) {
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
@@ -285,16 +126,17 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let storagePath: string | undefined;
       
       try {
-        // Upload file to storage
+        const base64Images = await fileToBase64Images(file);
+        updateFileState(file.id, { progress: 20 });
+
         const fileExtension = file.name.split('.').pop();
         storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
         const { error: storageError } = await supabase.storage
           .from('receipts')
           .upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
-        updateFileState(file.id, { progress: 30, storagePath });
+        updateFileState(file.id, { progress: 40, storagePath });
 
-        // Create receipt record
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -302,7 +144,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             filename: file.name, 
             batch_id: selectedBatchId,
             storage_path: storagePath,
-            status: 'queued'
+            status: 'processing'
           })
           .select('id')
           .single();
@@ -310,32 +152,25 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        // Queue job with QStash via Vercel API
-        const queueResponse = await fetch('/api/queue-receipt', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            receiptId,
-            authToken: session.access_token
-          }),
+        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
+          body: { base64Images, receiptId },
         });
+        updateFileState(file.id, { progress: 90 });
 
-        if (!queueResponse.ok) {
-          const errorText = await queueResponse.text();
-          throw new Error(`Failed to queue receipt: ${errorText}`);
+        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
+        if (data.expenses) {
+          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
         }
-
-        queuedReceipts.push(file.id);
-        watchingReceiptsRef.current.add(receiptId!);
-        console.log('[Upload] Watching receipt:', receiptId);
+        
+        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
+        updateFileState(file.id, { progress: 100, status: 'processed' });
 
       } catch (error: any) {
-        const errorMessage = error.message || 'Unknown error during upload.';
+        hasError = true;
+        const errorMessage = error.message || 'Unknown error during processing.';
         updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
         if (receiptId) {
-          await supabase.from('receipts').update({ status: 'failed', error_message: errorMessage }).eq('id', receiptId);
+            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
         }
       }
     }
@@ -343,11 +178,15 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     dismissToast(toastId);
     setIsUploading(false);
 
-    if (queuedReceipts.length > 0) {
-      showSuccess(`Queued ${queuedReceipts.length} receipt(s) for processing! Updates will appear automatically.`);
-    } else {
-      showError('No receipts were uploaded successfully.');
+    if (processedExpenses.length > 0) {
+      showSuccess(hasError ? 'Some receipts were processed successfully.' : 'All receipts processed!');
+      setAllExtractedExpensesForDialog(processedExpenses);
+      setIsSplitterDialogOpen(true);
+    } else if (!hasError) {
+      showError('AI could not extract any expenses from the uploaded files.');
     }
+    
+    onReceiptProcessed();
   };
 
   const handleExpensesSaved = () => {
