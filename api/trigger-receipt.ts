@@ -15,9 +15,10 @@ export default async function handler(req: any, res: any) {
     }
 
     console.log(`[Trigger] Triggering receipt processing for ${receiptId}`);
+    console.log(`[Trigger] Event key exists: ${!!process.env.INNGEST_EVENT_KEY}`);
 
     // Send event to Inngest
-    await inngest.send({
+    const result = await inngest.send({
       name: 'receipt/uploaded',
       data: {
         receiptId,
@@ -26,17 +27,24 @@ export default async function handler(req: any, res: any) {
       }
     });
 
-    console.log(`[Trigger] Successfully triggered processing for ${receiptId}`);
+    console.log(`[Trigger] Successfully triggered processing for ${receiptId}`, result);
 
     return res.status(200).json({ 
       success: true,
-      receiptId 
+      receiptId,
+      result
     });
 
   } catch (error: any) {
     console.error('[Trigger] Error triggering receipt processing:', error);
+    console.error('[Trigger] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     return res.status(500).json({ 
-      error: error.message || 'Failed to trigger processing' 
+      error: error.message || 'Failed to trigger processing',
+      details: error.toString()
     });
   }
 }
