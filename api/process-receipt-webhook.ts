@@ -22,14 +22,23 @@ export default async function handler(req: any, res: any) {
     // Get auth token from header
     const authToken = req.headers['x-auth-token'];
     if (!authToken) {
+      console.error('[Webhook] No auth token provided');
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // Initialize Supabase client - try multiple env var patterns
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || 
+                        process.env.NEXT_PUBLIC_SUPABASE_URL || 
+                        process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 
+                            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+                            process.env.SUPABASE_ANON_KEY;
+
+    console.log(`[Webhook] Supabase URL exists: ${!!supabaseUrl}`);
+    console.log(`[Webhook] Supabase Key exists: ${!!supabaseAnonKey}`);
 
     if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('[Webhook] Supabase configuration missing');
       return res.status(500).json({ error: 'Supabase configuration missing' });
     }
 
@@ -42,10 +51,14 @@ export default async function handler(req: any, res: any) {
     });
 
     // Update status to processing
-    await supabase
+    const { error: updateError } = await supabase
       .from('receipts')
       .update({ status: 'processing' })
       .eq('id', receiptId);
+
+    if (updateError) {
+      console.error('[Webhook] Failed to update status to processing:', updateError);
+    }
 
     console.log(`[Webhook] Updated receipt ${receiptId} to processing`);
 
@@ -78,10 +91,16 @@ export default async function handler(req: any, res: any) {
     console.log(`[Webhook] Expenses found: ${aiResult?.expenses?.length || 0}`);
 
     // Update receipt status to processed
-    await supabase
+    const { error: processedError } = await supabase
       .from('receipts')
       .update({ status: 'processed' })
       .eq('id', receiptId);
+
+    if (processedError) {
+      console.error('[Webhook] Failed to update status to processed:', processedError);
+    }
+
+    console.log(`[Webhook] Successfully completed receipt ${receiptId}`);
 
     return res.status(200).json({ 
       success: true, 
@@ -96,8 +115,12 @@ export default async function handler(req: any, res: any) {
     if (req.body?.receiptId) {
       try {
         const authToken = req.headers['x-auth-token'];
-        const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        const supabaseUrl = process.env.VITE_SUPABASE_URL || 
+                            process.env.NEXT_PUBLIC_SUPABASE_URL || 
+                            process.env.SUPABASE_URL;
+        const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 
+                                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+                                process.env.SUPABASE_ANON_KEY;
         
         if (supabaseUrl && supabaseAnonKey && authToken) {
           const supabase = createClient(supabaseUrl, supabaseAnonKey, {
