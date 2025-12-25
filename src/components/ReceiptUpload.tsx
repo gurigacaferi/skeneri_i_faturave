@@ -151,18 +151,15 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
         // Trigger Inngest event
-        const response = await fetch('/api/inngest', {
+        const response = await fetch('/api/trigger-receipt', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            name: 'receipt/uploaded',
-            data: {
-              receiptId,
-              authToken: session.access_token,
-              storagePath
-            }
+            receiptId,
+            authToken: session.access_token,
+            storagePath
           })
         });
 
