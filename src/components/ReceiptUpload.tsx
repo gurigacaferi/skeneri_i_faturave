@@ -116,9 +116,8 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
     setIsUploading(true);
-    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
-    const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
-    let hasError = false;
+    const toastId = showLoading(`Uploading ${filesToProcess.length} receipt(s)...`);
+    const queuedReceipts: string[] = [];
 
     for (const file of filesToProcess) {
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
@@ -126,17 +125,16 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let storagePath: string | undefined;
       
       try {
-        const base64Images = await fileToBase64Images(file);
-        updateFileState(file.id, { progress: 20 });
-
+        // Upload to storage
         const fileExtension = file.name.split('.').pop();
         storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
         const { error: storageError } = await supabase.storage
           .from('receipts')
           .upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
-        updateFileState(file.id, { progress: 40, storagePath });
+        updateFileState(file.id, { progress: 30, storagePath });
 
+        // Create receipt record with status='queued'
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -144,7 +142,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             filename: file.name, 
             batch_id: selectedBatchId,
             storage_path: storagePath,
-            status: 'processing'
+            status: 'queued'
           })
           .select('id')
           .single();
@@ -152,25 +150,34 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Images, receiptId },
+        // Trigger Inngest event
+        const response = await fetch('/api/inngest', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: 'receipt/uploaded',
+            data: {
+              receiptId,
+              authToken: session.access_token,
+              storagePath
+            }
+          })
         });
-        updateFileState(file.id, { progress: 90 });
 
-        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
-        if (data.expenses) {
-          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        if (!response.ok) {
+          throw new Error('Failed to queue receipt for processing');
         }
-        
-        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
-        updateFileState(file.id, { progress: 100, status: 'processed' });
+
+        queuedReceipts.push(file.id);
+        updateFileState(file.id, { progress: 60 });
 
       } catch (error: any) {
-        hasError = true;
-        const errorMessage = error.message || 'Unknown error during processing.';
+        const errorMessage = error.message || 'Unknown error during upload.';
         updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
         if (receiptId) {
-            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
+          await supabase.from('receipts').update({ status: 'failed', error_message: errorMessage }).eq('id', receiptId);
         }
       }
     }
@@ -178,15 +185,70 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     dismissToast(toastId);
     setIsUploading(false);
 
-    if (processedExpenses.length > 0) {
-      showSuccess(hasError ? 'Some receipts were processed successfully.' : 'All receipts processed!');
-      setAllExtractedExpensesForDialog(processedExpenses);
-      setIsSplitterDialogOpen(true);
-    } else if (!hasError) {
-      showError('AI could not extract any expenses from the uploaded files.');
+    if (queuedReceipts.length > 0) {
+      showSuccess(`Queued ${queuedReceipts.length} receipt(s) for background processing! You can navigate away - they'll process automatically.`);
+      // Start monitoring in background
+      startMonitoring(queuedReceipts);
+    } else {
+      showError('No receipts were uploaded successfully.');
     }
     
     onReceiptProcessed();
+  };
+
+  // Monitor receipts that are queued/processing
+  const startMonitoring = (fileIds: string[]) => {
+    const checkInterval = setInterval(async () => {
+      let allDone = true;
+      
+      for (const fileId of fileIds) {
+        const file = files.find(f => f.id === fileId);
+        if (!file?.receiptId) continue;
+
+        const { data } = await supabase
+          .from('receipts')
+          .select('status')
+          .eq('id', file.receiptId)
+          .single();
+
+        if (data?.status === 'processed') {
+          // Fetch expenses
+          const { data: expenses } = await supabase
+            .from('expenses')
+            .select('*')
+            .eq('receipt_id', file.receiptId);
+
+          if (expenses) {
+            expenses.forEach((exp: any) => {
+              setAllExtractedExpensesForDialog(prev => [
+                ...(prev || []),
+                { receiptId: file.receiptId!, expense: exp }
+              ]);
+            });
+          }
+
+          updateFileState(fileId, { status: 'processed', progress: 100 });
+        } else if (data?.status === 'failed') {
+          updateFileState(fileId, { status: 'failed', progress: 100 });
+        } else if (data?.status === 'processing') {
+          updateFileState(fileId, { progress: Math.min(95, file.progress + 5) });
+          allDone = false;
+        } else {
+          allDone = false;
+        }
+      }
+
+      if (allDone) {
+        clearInterval(checkInterval);
+        if (allExtractedExpensesForDialog && allExtractedExpensesForDialog.length > 0) {
+          setIsSplitterDialogOpen(true);
+        }
+        onReceiptProcessed();
+      }
+    }, 3000); // Check every 3 seconds
+
+    // Auto-clear after 5 minutes
+    setTimeout(() => clearInterval(checkInterval), 300000);
   };
 
   const handleExpensesSaved = () => {
