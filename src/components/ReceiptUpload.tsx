@@ -71,6 +71,15 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
   const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
   const filesToProcess = files.filter(f => f.status === 'pending');
 
+  // Define updateFileState before using it in effects
+  const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
+    setFiles(prevFiles =>
+      prevFiles.map(file =>
+        file.id === fileId ? { ...file, ...updates } : file
+      )
+    );
+  }, []);
+
   // Set up realtime subscription for receipt status changes
   useEffect(() => {
     if (!supabase || !session) return;
@@ -155,14 +164,6 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       }
     }
   }, [files, allExtractedExpensesForDialog, onReceiptProcessed]);
-
-  const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
-    setFiles(prevFiles =>
-      prevFiles.map(file =>
-        file.id === fileId ? { ...file, ...updates } : file
-      )
-    );
-  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[], fileRejections: any[]) => {
     const newAcceptedFiles: UploadedFile[] = acceptedFiles.map(file => Object.assign(file, { 
