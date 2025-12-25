@@ -147,6 +147,76 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     };
   }, [supabase, session, files, updateFileState]);
 
+  // Fallback polling mechanism in case Realtime doesn't work
+  useEffect(() => {
+    if (watchingReceiptsRef.current.size === 0 || !supabase) return;
+
+    const pollInterval = setInterval(async () => {
+      const receiptIds = Array.from(watchingReceiptsRef.current);
+      if (receiptIds.length === 0) return;
+
+      console.log('[Fallback Poll] Checking status for', receiptIds.length, 'receipts');
+
+      // Fetch all watched receipts
+      const { data: receipts, error } = await supabase
+        .from('receipts')
+        .select('id, status, error_message')
+        .in('id', receiptIds);
+
+      if (error || !receipts) {
+        console.error('[Fallback Poll] Error:', error);
+        return;
+      }
+
+      // Process each receipt
+      for (const receipt of receipts) {
+        const fileToUpdate = files.find(f => f.receiptId === receipt.id);
+        if (!fileToUpdate) continue;
+
+        if (receipt.status === 'processed') {
+          // Fetch expenses
+          const { data: expenses } = await supabase
+            .from('expenses')
+            .select('*')
+            .eq('receipt_id', receipt.id);
+
+          if (expenses && expenses.length > 0) {
+            expenses.forEach((exp: any) => {
+              setAllExtractedExpensesForDialog(prev => [
+                ...(prev || []),
+                { receiptId: receipt.id, expense: exp }
+              ]);
+            });
+          }
+
+          updateFileState(fileToUpdate.id, { 
+            status: 'processed', 
+            progress: 100 
+          });
+
+          watchingReceiptsRef.current.delete(receipt.id);
+          console.log('[Fallback Poll] Receipt processed:', receipt.id);
+        } else if (receipt.status === 'failed') {
+          updateFileState(fileToUpdate.id, { 
+            status: 'failed', 
+            progress: 100, 
+            errorMessage: receipt.error_message || 'Processing failed' 
+          });
+
+          watchingReceiptsRef.current.delete(receipt.id);
+          console.log('[Fallback Poll] Receipt failed:', receipt.id);
+        } else if (receipt.status === 'processing') {
+          updateFileState(fileToUpdate.id, { 
+            status: 'processing',
+            progress: 70 
+          });
+        }
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [supabase, files, updateFileState]);
+
   // Check if all watched receipts are complete and show splitter dialog
   useEffect(() => {
     if (watchingReceiptsRef.current.size === 0 && files.some(f => f.status === 'processed')) {
