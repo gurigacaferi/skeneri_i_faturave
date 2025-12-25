@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,8 +10,7 @@ import { Loader2, UploadCloud, X, Image, File as FileIcon, CheckCircle, AlertTri
 import ExpenseSplitterDialog from './ExpenseSplitterDialog';
 import { v4 as uuidv4 } from 'uuid';
 import { Progress } from '@/components/ui/progress';
-import { fileToBase64Images } from '@/utils/fileUtils'; // Import the new utility
-import { cn } from '@/lib/utils'; // <-- ADDED IMPORT
+import { cn } from '@/lib/utils';
 
 interface ReceiptUploadProps {
   onReceiptProcessed: () => void;
@@ -65,9 +64,20 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
 
   const [isSplitterDialogOpen, setIsSplitterDialogOpen] = useState(false);
   const [allExtractedExpensesForDialog, setAllExtractedExpensesForDialog] = useState<ExtractedExpenseWithReceiptId[] | null>([]);
+  
+  // Track polling intervals
+  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const pendingFiles = files.filter(f => f.status === 'pending' || f.status === 'failed' || f.status === 'unsupported');
   const filesToProcess = files.filter(f => f.status === 'pending');
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      pollingIntervalsRef.current.forEach(interval => clearInterval(interval));
+      pollingIntervalsRef.current.clear();
+    };
+  }, []);
 
   const updateFileState = useCallback((fileId: string, updates: Partial<UploadedFile>) => {
     setFiles(prevFiles =>
@@ -111,14 +121,80 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     return <FileIcon className="h-5 w-5 text-gray-500" />;
   };
 
+  // Poll receipt status from database
+  const pollReceiptStatus = useCallback(async (receiptId: string, fileId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('receipts')
+        .select('status')
+        .eq('id', receiptId)
+        .single();
+
+      if (error || !data) {
+        console.error('Failed to check receipt status:', error);
+        return false;
+      }
+
+      if (data.status === 'processed') {
+        const interval = pollingIntervalsRef.current.get(fileId);
+        if (interval) {
+          clearInterval(interval);
+          pollingIntervalsRef.current.delete(fileId);
+        }
+
+        updateFileState(fileId, { progress: 100, status: 'processed' });
+
+        // Fetch expenses from database
+        const { data: expenses } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('receipt_id', receiptId);
+
+        if (expenses && expenses.length > 0) {
+          expenses.forEach((exp: any) => {
+            setAllExtractedExpensesForDialog(prev => [
+              ...(prev || []),
+              { receiptId, expense: exp }
+            ]);
+          });
+        }
+
+        return true;
+      } else if (data.status === 'failed') {
+        const interval = pollingIntervalsRef.current.get(fileId);
+        if (interval) {
+          clearInterval(interval);
+          pollingIntervalsRef.current.delete(fileId);
+        }
+
+        updateFileState(fileId, { 
+          status: 'failed', 
+          progress: 100, 
+          errorMessage: 'Processing failed' 
+        });
+
+        return true;
+      } else if (data.status === 'processing') {
+        const elapsed = Date.now() % 60000;
+        const progressSimulation = Math.min(90, 50 + (elapsed / 60000) * 40);
+        updateFileState(fileId, { progress: Math.round(progressSimulation) });
+        return false;
+      }
+
+      return false;
+    } catch (error: any) {
+      console.error('Polling error:', error);
+      return false;
+    }
+  }, [session, supabase]);
+
   const handleFileUpload = async () => {
     if (filesToProcess.length === 0) { showError('No files selected or pending processing.'); return; }
     if (!session || !selectedBatchId) { showError('You must be logged in and have a batch selected.'); return; }
 
     setIsUploading(true);
-    const toastId = showLoading(`Starting processing for ${filesToProcess.length} receipt(s)...`);
-    const processedExpenses: ExtractedExpenseWithReceiptId[] = [];
-    let hasError = false;
+    const toastId = showLoading(`Uploading ${filesToProcess.length} receipt(s)...`);
+    const queuedReceipts: string[] = [];
 
     for (const file of filesToProcess) {
       updateFileState(file.id, { status: 'uploading', progress: 5, errorMessage: undefined });
@@ -126,17 +202,16 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
       let storagePath: string | undefined;
       
       try {
-        const base64Images = await fileToBase64Images(file);
-        updateFileState(file.id, { progress: 20 });
-
+        // Upload file to storage
         const fileExtension = file.name.split('.').pop();
         storagePath = `${session.user.id}/${uuidv4()}.${fileExtension}`;
         const { error: storageError } = await supabase.storage
           .from('receipts')
           .upload(storagePath, file);
         if (storageError) throw new Error(`Storage upload failed: ${storageError.message}`);
-        updateFileState(file.id, { progress: 40, storagePath });
+        updateFileState(file.id, { progress: 30, storagePath });
 
+        // Create receipt record
         const { data: receiptData, error: receiptInsertError } = await supabase
           .from('receipts')
           .insert({ 
@@ -144,7 +219,7 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
             filename: file.name, 
             batch_id: selectedBatchId,
             storage_path: storagePath,
-            status: 'processing'
+            status: 'queued'
           })
           .select('id')
           .single();
@@ -152,25 +227,40 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
         receiptId = receiptData.id;
         updateFileState(file.id, { progress: 50, receiptId, status: 'processing' });
 
-        const { data, error: edgeFunctionError } = await supabase.functions.invoke('process-receipt', {
-          body: { base64Images, receiptId },
+        // Queue job with QStash via Vercel API
+        const queueResponse = await fetch('/api/queue-receipt', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            receiptId,
+            authToken: session.access_token
+          }),
         });
-        updateFileState(file.id, { progress: 90 });
 
-        if (edgeFunctionError) throw new Error(edgeFunctionError.message);
-        if (data.expenses) {
-          data.expenses.forEach((exp: any) => processedExpenses.push({ receiptId: receiptId!, expense: exp }));
+        if (!queueResponse.ok) {
+          const errorText = await queueResponse.text();
+          throw new Error(`Failed to queue receipt: ${errorText}`);
         }
-        
-        await supabase.from('receipts').update({ status: 'processed' }).eq('id', receiptId);
-        updateFileState(file.id, { progress: 100, status: 'processed' });
+
+        queuedReceipts.push(file.id);
+
+        // Start polling for this receipt
+        const interval = setInterval(() => {
+          pollReceiptStatus(receiptId!, file.id);
+        }, 2000); // Poll every 2 seconds
+
+        pollingIntervalsRef.current.set(file.id, interval);
+
+        // Do initial poll immediately
+        pollReceiptStatus(receiptId!, file.id);
 
       } catch (error: any) {
-        hasError = true;
-        const errorMessage = error.message || 'Unknown error during processing.';
+        const errorMessage = error.message || 'Unknown error during upload.';
         updateFileState(file.id, { status: 'failed', progress: 100, errorMessage });
         if (receiptId) {
-            await supabase.from('receipts').update({ status: 'failed' }).eq('id', receiptId);
+          await supabase.from('receipts').update({ status: 'failed', error_message: errorMessage }).eq('id', receiptId);
         }
       }
     }
@@ -178,15 +268,40 @@ const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed, selec
     dismissToast(toastId);
     setIsUploading(false);
 
-    if (processedExpenses.length > 0) {
-      showSuccess(hasError ? 'Some receipts were processed successfully.' : 'All receipts processed!');
-      setAllExtractedExpensesForDialog(processedExpenses);
-      setIsSplitterDialogOpen(true);
-    } else if (!hasError) {
-      showError('AI could not extract any expenses from the uploaded files.');
+    if (queuedReceipts.length > 0) {
+      showSuccess(`Queued ${queuedReceipts.length} receipt(s) for processing!`);
+      
+      // Wait for all to complete (with timeout)
+      const maxWaitTime = 300000; // 5 minutes max
+      const startTime = Date.now();
+      
+      const checkCompletion = setInterval(() => {
+        const allComplete = filesToProcess.every(f => {
+          const fileState = files.find(file => file.id === f.id);
+          return fileState?.status === 'processed' || fileState?.status === 'failed';
+        });
+
+        if (allComplete || Date.now() - startTime > maxWaitTime) {
+          clearInterval(checkCompletion);
+          
+          // Clear all polling intervals
+          pollingIntervalsRef.current.forEach(interval => clearInterval(interval));
+          pollingIntervalsRef.current.clear();
+
+          // Show final results
+          if (allExtractedExpensesForDialog && allExtractedExpensesForDialog.length > 0) {
+            setIsSplitterDialogOpen(true);
+          } else {
+            showError('AI could not extract any expenses from the uploaded files.');
+          }
+          
+          onReceiptProcessed();
+        }
+      }, 1000);
+    } else {
+      showError('No receipts were uploaded successfully.');
+      onReceiptProcessed();
     }
-    
-    onReceiptProcessed();
   };
 
   const handleExpensesSaved = () => {
